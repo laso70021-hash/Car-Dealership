@@ -10,7 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export const SellerAddVehiclePage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const sellerId = user?.id || 'seller-ali-hassan';
+  const sellerId = user?.user_id || user?.id || '8916c8d8-3037-4e54-9ea5-d025cd77e042';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);

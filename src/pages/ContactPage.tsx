@@ -1,17 +1,49 @@
 import React, { useState } from 'react';
-import { MapPin, Phone, Mail, Clock, Send, CheckCircle2 } from 'lucide-react';
+import { MapPin, Phone, Mail, Clock, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { DealershipService } from '../services/dealershipService';
+import { useAuth } from '../contexts/AuthContext';
 
 export const ContactPage: React.FC = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const { user } = useAuth();
+  const [name, setName] = useState(user?.full_name || user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+    if (!name.trim() || !email.trim() || !message.trim()) {
+      setErrorMessage('Please fill in your name, email, and message.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      await DealershipService.sendEnquiry({
+        customer_id: user?.user_id || user?.id,
+        customer_name: name,
+        customer_email: email,
+        customer_phone: phone || undefined,
+        message: message,
+        vehicle_title: 'General Showroom Inquiry',
+        status: 'New'
+      });
+
+      setSubmitted(true);
+      setName('');
+      setMessage('');
+      setTimeout(() => setSubmitted(false), 4000);
+    } catch (err: any) {
+      console.error('Contact form submission error:', err);
+      setErrorMessage(err.message || 'Failed to send message. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -87,10 +119,17 @@ export const ContactPage: React.FC = () => {
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">Thank You!</h3>
-                <p className="text-xs text-slate-500">Your message has been received. Our team will contact you shortly.</p>
+                <p className="text-xs text-slate-500">Your message has been stored in our Supabase system. Our team will contact you shortly.</p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
+                {errorMessage && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Your Full Name *</label>
@@ -142,10 +181,11 @@ export const ContactPage: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="px-6 py-3.5 bg-[#ef172b] hover:bg-[#d01122] text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-md shadow-red-500/20 transition-all hover:scale-[1.01]"
+                  disabled={isSubmitting}
+                  className="px-6 py-3.5 bg-[#ef172b] hover:bg-[#d01122] disabled:opacity-60 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-md shadow-red-500/20 transition-all hover:scale-[1.01]"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Send Message</span>
+                  <span>{isSubmitting ? 'Sending...' : 'Send Message'}</span>
                 </button>
               </form>
             )}

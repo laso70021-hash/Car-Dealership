@@ -9,7 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 export const SellerCustomersPage: React.FC = () => {
   const { user } = useAuth();
-  const sellerId = user?.id || 'seller-ali-hassan';
+  const sellerId = user?.user_id || user?.id || '8916c8d8-3037-4e54-9ea5-d025cd77e042';
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);

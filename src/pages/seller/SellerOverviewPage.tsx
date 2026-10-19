@@ -17,7 +17,12 @@ const MONTHLY_EARNINGS_DATA = [
   { month: 'Oct', earnings: 48.5 },
 ];
 
+import { useAuth } from '../../contexts/AuthContext';
+
 export const SellerOverviewPage: React.FC = () => {
+  const { user } = useAuth();
+  const activeSellerId = user?.user_id || user?.id;
+
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
@@ -34,13 +39,13 @@ export const SellerOverviewPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeSellerId]);
 
   const loadData = async () => {
     const [vData, oData, eData] = await Promise.all([
-      DealershipService.getVehicles({ sellerId: 'seller-ali-hassan' }),
+      DealershipService.getVehicles({ sellerId: activeSellerId }),
       DealershipService.getOrders(),
-      DealershipService.getEnquiries('seller-ali-hassan')
+      DealershipService.getEnquiries(activeSellerId)
     ]);
     setVehicles(vData);
     setOrders(oData.slice(0, 4));
@@ -50,7 +55,7 @@ export const SellerOverviewPage: React.FC = () => {
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     const created = await DealershipService.createVehicle({
-      seller_id: 'seller-ali-hassan',
+      seller_id: activeSellerId,
       title: newTitle,
       slug: newTitle.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
       brand: newBrand,

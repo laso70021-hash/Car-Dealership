@@ -1,39 +1,78 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, CheckCircle2, Car, Wrench } from 'lucide-react';
+import { X, Calendar, Clock, CheckCircle2, Car, Wrench, AlertCircle } from 'lucide-react';
 import { Vehicle } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { DealershipService } from '../../services/dealershipService';
 
 interface BookingModalProps {
   vehicle?: Vehicle;
   type: 'test_drive' | 'service';
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
   vehicle,
   type,
   isOpen,
-  onClose
+  onClose,
+  onSuccess
 }) => {
   const { user } = useAuth();
-  const [name, setName] = useState(user?.full_name || '');
+  const [name, setName] = useState(user?.full_name || user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState(user?.phone || '+255 777 123456');
+  const [phone, setPhone] = useState(user?.phone || '+255 770 000 000');
   const [date, setDate] = useState('2026-10-25');
   const [time, setTime] = useState('10:00 AM');
   const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [bookingRef, setBookingRef] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSuccess(true);
-    setTimeout(() => {
-      setIsSuccess(false);
-      onClose();
-    }, 2200);
+    if (!name.trim() || !phone.trim() || !date) {
+      setErrorMessage('Please fill in your name, phone number, and date.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const res = await DealershipService.createBooking({
+        booking_type: type,
+        vehicle_id: vehicle?.id,
+        vehicle_title: vehicle?.title,
+        customer_id: user?.user_id || user?.id,
+        customer_name: name,
+        customer_email: email,
+        customer_phone: phone,
+        seller_id: vehicle?.seller_id,
+        booking_date: date,
+        booking_time: time,
+        notes: notes || undefined,
+        status: 'Confirmed'
+      });
+
+      setBookingRef(res.booking_number);
+      setIsSuccess(true);
+      if (onSuccess) onSuccess();
+
+      setTimeout(() => {
+        setIsSuccess(false);
+        onClose();
+      }, 2500);
+    } catch (err: any) {
+      console.error('Booking submission error:', err);
+      setErrorMessage(err.message || 'Failed to submit appointment. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -64,41 +103,53 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <CheckCircle2 className="w-10 h-10" />
             </div>
             <h4 className="text-lg font-bold text-slate-900">Booking Confirmed!</h4>
+            <div className="text-xs font-mono bg-slate-100 text-slate-800 py-1 px-3 rounded-lg inline-block">
+              Reference: {bookingRef}
+            </div>
             <p className="text-xs text-slate-600">
               Your appointment is scheduled for {date} at {time}. Our team will contact you at {phone} to coordinate details.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {errorMessage && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Salim Khamis"
                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-[#ef172b] outline-none"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number *</label>
                 <input
                   type="tel"
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+255 770 000 000"
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-[#ef172b] outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
                 <input
                   type="email"
-                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-[#ef172b] outline-none"
                 />
               </div>
@@ -106,7 +157,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Preferred Date</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Preferred Date *</label>
                 <input
                   type="date"
                   required
@@ -116,7 +167,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Preferred Time</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Preferred Time *</label>
                 <select
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
@@ -137,7 +188,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any special requests or questions..."
+                placeholder="Any special requests, route preferences, or questions..."
                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-[#ef172b] outline-none resize-none"
               />
             </div>
@@ -152,9 +203,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-[#ef172b] hover:bg-[#d01122] text-white text-xs font-bold rounded-xl shadow-md shadow-red-500/20"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 bg-[#ef172b] hover:bg-[#d01122] disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-md shadow-red-500/20 flex items-center gap-1.5 transition-all"
               >
-                Confirm Appointment
+                {isSubmitting ? 'Saving...' : 'Confirm Appointment'}
               </button>
             </div>
           </form>

@@ -3,13 +3,19 @@ import { Link } from 'react-router-dom';
 import { MapPin, Phone, Mail, Clock, Send, Check } from 'lucide-react';
 import { SwahivoLogo } from '../common/SwahivoLogo';
 
+import { DealershipService } from '../../services/dealershipService';
+
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
+    if (email && email.includes('@')) {
+      setIsSubmitting(true);
+      await DealershipService.subscribeNewsletter(email);
+      setIsSubmitting(false);
       setSubscribed(true);
       setEmail('');
       setTimeout(() => setSubscribed(false), 4000);

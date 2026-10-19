@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Calendar, Gauge, Fuel, Cog, MapPin, ArrowRight } from 'lucide-react';
 import { Vehicle } from '../../types';
 import { DealershipService } from '../../services/dealershipService';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface VehicleCardProps {
   vehicle: Vehicle;
@@ -15,14 +16,30 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
   onFavoriteChange,
   showActions = true
 }) => {
-  const [isFavorited, setIsFavorited] = useState(() => {
-    return DealershipService.getFavorites().includes(vehicle.id);
+  const { user } = useAuth();
+  const [isFavorited, setIsFavorited] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('swahivo_cache_favorites');
+      return saved ? JSON.parse(saved).includes(vehicle.id) : false;
+    } catch {
+      return false;
+    }
   });
+
+  useEffect(() => {
+    let active = true;
+    DealershipService.getFavorites(user?.user_id || user?.id).then((ids) => {
+      if (active) {
+        setIsFavorited(ids.includes(vehicle.id));
+      }
+    });
+    return () => { active = false; };
+  }, [vehicle.id, user]);
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const updated = await DealershipService.toggleFavorite(vehicle.id);
+    const updated = await DealershipService.toggleFavorite(vehicle.id, user?.user_id || user?.id);
     setIsFavorited(updated.includes(vehicle.id));
     if (onFavoriteChange) onFavoriteChange();
   };

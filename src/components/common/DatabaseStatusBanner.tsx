@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Database, Copy, Check, ExternalLink, RefreshCw, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { DealershipService, DatabaseStatus } from '../../services/dealershipService';
 
+import masterSql from '../../../supabase/migrations/20261018000000_swahivo_master_schema.sql?raw';
+
 export const DatabaseStatusBanner: React.FC = () => {
   const [status, setStatus] = useState<DatabaseStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -21,17 +23,14 @@ export const DatabaseStatusBanner: React.FC = () => {
   }, []);
 
   const copySql = () => {
-    fetch('/supabase/migrations/20261018000000_swahivo_master_schema.sql')
-      .then(r => r.text())
-      .then(text => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      });
+    try {
+      navigator.clipboard.writeText(masterSql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
   if (!status || isDismissed) return null;

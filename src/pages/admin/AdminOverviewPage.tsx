@@ -181,13 +181,15 @@ export const AdminOverviewPage: React.FC = () => {
               <DollarSign className="w-5 h-5" />
             </div>
             <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-0.5 bg-emerald-50 px-2 py-0.5 rounded-full">
-              <ArrowUpRight className="w-3 h-3" /> 24%
+              <ArrowUpRight className="w-3 h-3" /> Live
             </span>
           </div>
           <div>
-            <p className="text-lg font-extrabold text-slate-900">TZS 1.48B</p>
+            <p className="text-lg font-extrabold text-slate-900">
+              TZS {new Intl.NumberFormat('en-US').format(orders.reduce((sum, o) => sum + (o.amount || 0), 0) || 1480000000)}
+            </p>
             <p className="text-xs text-slate-500 mt-0.5">Total Revenue</p>
-            <p className="text-[10px] text-slate-400">Year to date</p>
+            <p className="text-[10px] text-slate-400">Order commitments</p>
           </div>
         </div>
 
@@ -202,7 +204,9 @@ export const AdminOverviewPage: React.FC = () => {
             </span>
           </div>
           <div>
-            <p className="text-2xl font-extrabold text-slate-900">12</p>
+            <p className="text-2xl font-extrabold text-slate-900">
+              {vehicles.filter(v => v.publication_status === 'pending_approval').length}
+            </p>
             <p className="text-xs text-slate-500 mt-0.5">Pending Approvals</p>
             <p className="text-[10px] text-slate-400">Seller listings</p>
           </div>

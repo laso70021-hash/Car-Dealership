@@ -1,11 +1,12 @@
 -- ============================================================================
--- SWAHIVO CAR DEALERSHIP — MASTER SUPABASE SQL MIGRATION
+-- SWAHIVO CAR DEALERSHIP — MASTER SUPABASE SQL MIGRATION (REPAIRED)
 -- Project: https://yefbfstqxxqpbqzloeod.supabase.co
 -- Admin UID: 3c6a4096-d6e2-4c45-bada-45f0cbf01510
 -- ============================================================================
 
--- Enable UUID extension if not already enabled
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ----------------------------------------------------------------------------
 -- 1. PROFILES & ROLES
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Set admin role for administrator UID
+-- Seed/Ensure admin user in profiles
 INSERT INTO public.profiles (user_id, role, full_name, email, is_verified)
 VALUES (
   '3c6a4096-d6e2-4c45-bada-45f0cbf01510',
@@ -97,12 +98,13 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   model TEXT NOT NULL,
   variant TEXT,
   vehicle_type TEXT DEFAULT 'SUV',
-  condition TEXT NOT NULL DEFAULT 'Used' CHECK (condition IN ('New', 'Used', 'Pre-Owned')),
+  condition TEXT NOT NULL DEFAULT 'Used' CHECK (condition IN ('New', 'Used', 'Pre-Owned', 'Certified Pre-Owned')),
   year INT NOT NULL,
   mileage INT NOT NULL DEFAULT 0,
   fuel_type TEXT NOT NULL DEFAULT 'Petrol' CHECK (fuel_type IN ('Petrol', 'Diesel', 'Hybrid', 'Electric')),
   transmission TEXT NOT NULL DEFAULT 'Automatic' CHECK (transmission IN ('Automatic', 'Manual')),
   engine_capacity TEXT,
+  engine_size TEXT,
   color TEXT,
   seats INT DEFAULT 5,
   doors INT DEFAULT 4,
@@ -200,7 +202,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   amount BIGINT NOT NULL,
   currency TEXT DEFAULT 'TZS',
   notes TEXT,
-  status TEXT DEFAULT 'Pending' CHECK (status IN ('Pending', 'Processing', 'Confirmed', 'Completed', 'Cancelled')),
+  status TEXT DEFAULT 'Pending' CHECK (status IN ('Pending', 'Processing', 'Confirmed', 'Completed', 'Cancelled', 'pending', 'processing', 'confirmed', 'completed', 'cancelled')),
   payment_status TEXT DEFAULT 'pending_verification' CHECK (payment_status IN ('unpaid', 'pending_verification', 'paid', 'refunded')),
   timeline JSONB DEFAULT '[]'::JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -221,7 +223,10 @@ CREATE TABLE IF NOT EXISTS public.enquiries (
   customer_phone TEXT,
   seller_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   message TEXT NOT NULL,
-  status TEXT DEFAULT 'New' CHECK (status IN ('New', 'Contacted', 'Pending', 'Responded', 'Closed')),
+  reply TEXT,
+  replied_at TIMESTAMPTZ,
+  replied_by TEXT,
+  status TEXT DEFAULT 'New' CHECK (status IN ('New', 'Contacted', 'Pending', 'Responded', 'Closed', 'pending', 'in_progress', 'closed')),
   last_message_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -231,7 +236,7 @@ CREATE TABLE IF NOT EXISTS public.enquiry_messages (
   enquiry_id UUID NOT NULL REFERENCES public.enquiries(id) ON DELETE CASCADE,
   sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   sender_name TEXT NOT NULL,
-  sender_role TEXT NOT NULL,
+  sender_role TEXT NOT NULL DEFAULT 'customer',
   message TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -242,17 +247,18 @@ CREATE TABLE IF NOT EXISTS public.enquiry_messages (
 CREATE TABLE IF NOT EXISTS public.bookings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   booking_number TEXT NOT NULL UNIQUE,
-  booking_type TEXT NOT NULL CHECK (booking_type IN ('test_drive', 'service')),
+  booking_type TEXT NOT NULL DEFAULT 'test_drive' CHECK (booking_type IN ('test_drive', 'service')),
   vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE SET NULL,
+  vehicle_title TEXT,
   service_id UUID REFERENCES public.services(id) ON DELETE SET NULL,
   customer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   customer_name TEXT NOT NULL,
-  customer_email TEXT NOT NULL,
+  customer_email TEXT,
   customer_phone TEXT NOT NULL,
   seller_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   booking_date DATE NOT NULL,
   booking_time TEXT NOT NULL,
-  status TEXT DEFAULT 'Confirmed' CHECK (status IN ('Pending', 'Confirmed', 'Completed', 'Cancelled')),
+  status TEXT DEFAULT 'Confirmed' CHECK (status IN ('Pending', 'Confirmed', 'Completed', 'Cancelled', 'pending', 'confirmed', 'completed', 'cancelled')),
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -262,10 +268,9 @@ CREATE TABLE IF NOT EXISTS public.bookings (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.favorites (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, vehicle_id)
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- ----------------------------------------------------------------------------
@@ -315,8 +320,90 @@ CREATE TABLE IF NOT EXISTS public.newsletter_subscribers (
 );
 
 -- ----------------------------------------------------------------------------
--- 16. ROW LEVEL SECURITY (RLS) POLICIES
+-- 16. ADDITIVE MODULE TABLES (CRM Leads, Financing Applications, Campaigns)
 -- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.leads (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT,
+  vehicle_interest TEXT,
+  budget BIGINT DEFAULT 0,
+  source TEXT DEFAULT 'Website',
+  status TEXT DEFAULT 'New' CHECK (status IN ('New', 'Contacted', 'Qualified', 'Negotiation', 'Won', 'Lost')),
+  assigned_to TEXT,
+  notes TEXT[] DEFAULT ARRAY[]::TEXT[],
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.financing_applications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  application_number TEXT UNIQUE NOT NULL,
+  customer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  applicant_name TEXT NOT NULL,
+  applicant_phone TEXT NOT NULL,
+  applicant_email TEXT,
+  vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE SET NULL,
+  vehicle_title TEXT,
+  vehicle_price BIGINT NOT NULL,
+  down_payment BIGINT NOT NULL,
+  loan_amount BIGINT NOT NULL,
+  loan_term_months INT NOT NULL,
+  monthly_payment BIGINT NOT NULL,
+  monthly_income TEXT,
+  status TEXT DEFAULT 'Under Review' CHECK (status IN ('Under Review', 'Pending', 'Pre-Approved', 'Approved', 'Rejected')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.marketing_campaigns (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  type TEXT DEFAULT 'Featured Vehicle',
+  budget BIGINT DEFAULT 0,
+  spent BIGINT DEFAULT 0,
+  clicks INT DEFAULT 0,
+  impressions INT DEFAULT 0,
+  conversions INT DEFAULT 0,
+  start_date DATE,
+  end_date DATE,
+  status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Paused', 'Completed', 'Draft')),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ----------------------------------------------------------------------------
+-- 17. PERMISSIONS & SCHEMA GRANTS (CRITICAL FOR POSTGREST ACCESS)
+-- ----------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 18. HELPER SECURITY FUNCTIONS
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN COALESCE(
+    EXISTS (
+      SELECT 1 FROM public.profiles 
+      WHERE user_id = auth.uid() AND role = 'admin'
+    ) OR auth.uid() = '3c6a4096-d6e2-4c45-bada-45f0cbf01510'::UUID,
+    false
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ----------------------------------------------------------------------------
+-- 19. ROW LEVEL SECURITY (RLS) POLICIES — REPAIRED & COMPLETE
+-- ----------------------------------------------------------------------------
+
+-- Enable RLS across all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.seller_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.brands ENABLE ROW LEVEL SECURITY;
@@ -334,162 +421,313 @@ ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.website_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.newsletter_subscribers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.financing_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.marketing_campaigns ENABLE ROW LEVEL SECURITY;
 
--- Helper function to check if current user is admin
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM public.profiles 
-    WHERE user_id = auth.uid() AND role = 'admin'
-  ) OR auth.uid() = '3c6a4096-d6e2-4c45-bada-45f0cbf01510'::UUID;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Profiles policies
+-- 1. PROFILES
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Profiles are readable by anyone" ON public.profiles;
   CREATE POLICY "Profiles are readable by anyone" ON public.profiles FOR SELECT USING (true);
   
+  DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+  CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (
+    auth.uid() = user_id OR public.is_admin() OR auth.uid() IS NULL
+  );
+
   DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
   CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (
     auth.uid() = user_id OR public.is_admin()
   );
-  
-  DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-  CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (
-    auth.uid() = user_id OR public.is_admin()
+END $$;
+
+-- 2. SELLER PROFILES
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Seller profiles are publicly readable" ON public.seller_profiles;
+  CREATE POLICY "Seller profiles are publicly readable" ON public.seller_profiles FOR SELECT USING (true);
+
+  DROP POLICY IF EXISTS "Sellers can manage own profile" ON public.seller_profiles;
+  CREATE POLICY "Sellers can manage own profile" ON public.seller_profiles FOR ALL USING (
+    auth.uid() = seller_id OR public.is_admin() OR auth.uid() IS NULL
   );
 END $$;
 
--- Public readable tables (Brands, Categories, Approved Vehicles, Accessories, Services, Reviews)
+-- 3. BRANDS
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Brands are publicly readable" ON public.brands;
   CREATE POLICY "Brands are publicly readable" ON public.brands FOR SELECT USING (true);
 
+  DROP POLICY IF EXISTS "Brands manageable by admin" ON public.brands;
+  CREATE POLICY "Brands manageable by admin" ON public.brands FOR ALL USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 4. CATEGORIES
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Categories are publicly readable" ON public.categories;
   CREATE POLICY "Categories are publicly readable" ON public.categories FOR SELECT USING (true);
 
+  DROP POLICY IF EXISTS "Categories manageable by admin" ON public.categories;
+  CREATE POLICY "Categories manageable by admin" ON public.categories FOR ALL USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 5. VEHICLES
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Approved vehicles are publicly readable" ON public.vehicles;
   CREATE POLICY "Approved vehicles are publicly readable" ON public.vehicles FOR SELECT USING (
-    publication_status IN ('approved', 'active') OR seller_id = auth.uid() OR public.is_admin()
+    publication_status IN ('approved', 'active') OR seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
+  DROP POLICY IF EXISTS "Sellers and admins can insert vehicles" ON public.vehicles;
+  CREATE POLICY "Sellers and admins can insert vehicles" ON public.vehicles FOR INSERT WITH CHECK (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+
+  DROP POLICY IF EXISTS "Sellers and admins can update vehicles" ON public.vehicles;
+  CREATE POLICY "Sellers and admins can update vehicles" ON public.vehicles FOR UPDATE USING (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+
+  DROP POLICY IF EXISTS "Sellers and admins can delete vehicles" ON public.vehicles;
+  CREATE POLICY "Sellers and admins can delete vehicles" ON public.vehicles FOR DELETE USING (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 6. VEHICLE IMAGES
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Vehicle images are publicly readable" ON public.vehicle_images;
   CREATE POLICY "Vehicle images are publicly readable" ON public.vehicle_images FOR SELECT USING (true);
 
+  DROP POLICY IF EXISTS "Vehicle images manageable by users" ON public.vehicle_images;
+  CREATE POLICY "Vehicle images manageable by users" ON public.vehicle_images FOR ALL USING (true);
+END $$;
+
+-- 7. ACCESSORIES
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Accessories are publicly readable" ON public.accessories;
   CREATE POLICY "Accessories are publicly readable" ON public.accessories FOR SELECT USING (true);
 
+  DROP POLICY IF EXISTS "Accessories manageable by admin and sellers" ON public.accessories;
+  CREATE POLICY "Accessories manageable by admin and sellers" ON public.accessories FOR ALL USING (
+    public.is_admin() OR seller_id = auth.uid() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 8. SERVICES
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Services are publicly readable" ON public.services;
   CREATE POLICY "Services are publicly readable" ON public.services FOR SELECT USING (true);
 
-  DROP POLICY IF EXISTS "Approved reviews are publicly readable" ON public.reviews;
-  CREATE POLICY "Approved reviews are publicly readable" ON public.reviews FOR SELECT USING (status = 'approved' OR public.is_admin());
-
-  DROP POLICY IF EXISTS "Website settings are publicly readable" ON public.website_settings;
-  CREATE POLICY "Website settings are publicly readable" ON public.website_settings FOR SELECT USING (true);
+  DROP POLICY IF EXISTS "Services manageable by admin" ON public.services;
+  CREATE POLICY "Services manageable by admin" ON public.services FOR ALL USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
 END $$;
 
--- Seller & Admin vehicle management
+-- 9. ORDERS
 DO $$ BEGIN
-  DROP POLICY IF EXISTS "Sellers can manage own vehicles" ON public.vehicles;
-  CREATE POLICY "Sellers can manage own vehicles" ON public.vehicles FOR ALL USING (
-    seller_id = auth.uid() OR public.is_admin()
+  DROP POLICY IF EXISTS "Orders readable by participants" ON public.orders;
+  CREATE POLICY "Orders readable by participants" ON public.orders FOR SELECT USING (
+    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
-  DROP POLICY IF EXISTS "Users can manage favorites" ON public.favorites;
-  CREATE POLICY "Users can manage favorites" ON public.favorites FOR ALL USING (
-    auth.uid() = user_id OR public.is_admin()
+  DROP POLICY IF EXISTS "Anyone can create order" ON public.orders;
+  CREATE POLICY "Anyone can create order" ON public.orders FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Orders updatable by seller and admin" ON public.orders;
+  CREATE POLICY "Orders updatable by seller and admin" ON public.orders FOR UPDATE USING (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 10. ENQUIRIES & MESSAGES
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Enquiries readable by participants" ON public.enquiries;
+  CREATE POLICY "Enquiries readable by participants" ON public.enquiries FOR SELECT USING (
+    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
-  DROP POLICY IF EXISTS "Enquiries readable by participant" ON public.enquiries;
-  CREATE POLICY "Enquiries readable by participant" ON public.enquiries FOR SELECT USING (
-    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin()
+  DROP POLICY IF EXISTS "Enquiries insertable by anyone" ON public.enquiries;
+  CREATE POLICY "Enquiries insertable by anyone" ON public.enquiries FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Enquiries updatable by seller and admin" ON public.enquiries;
+  CREATE POLICY "Enquiries updatable by seller and admin" ON public.enquiries FOR UPDATE USING (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
-  DROP POLICY IF EXISTS "Enquiries insertable by users" ON public.enquiries;
-  CREATE POLICY "Enquiries insertable by users" ON public.enquiries FOR INSERT WITH CHECK (true);
+  DROP POLICY IF EXISTS "Enquiry messages readable by participants" ON public.enquiry_messages;
+  CREATE POLICY "Enquiry messages readable by participants" ON public.enquiry_messages FOR SELECT USING (true);
 
-  DROP POLICY IF EXISTS "Orders readable by buyer seller or admin" ON public.orders;
-  CREATE POLICY "Orders readable by buyer seller or admin" ON public.orders FOR SELECT USING (
-    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin()
+  DROP POLICY IF EXISTS "Enquiry messages insertable by participants" ON public.enquiry_messages;
+  CREATE POLICY "Enquiry messages insertable by participants" ON public.enquiry_messages FOR INSERT WITH CHECK (true);
+END $$;
+
+-- 11. BOOKINGS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Bookings readable by participants" ON public.bookings;
+  CREATE POLICY "Bookings readable by participants" ON public.bookings FOR SELECT USING (
+    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
-  DROP POLICY IF EXISTS "Bookings readable by participant" ON public.bookings;
-  CREATE POLICY "Bookings readable by participant" ON public.bookings FOR SELECT USING (
-    customer_id = auth.uid() OR seller_id = auth.uid() OR public.is_admin()
+  DROP POLICY IF EXISTS "Bookings insertable by anyone" ON public.bookings;
+  CREATE POLICY "Bookings insertable by anyone" ON public.bookings FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Bookings updatable by seller and admin" ON public.bookings;
+  CREATE POLICY "Bookings updatable by seller and admin" ON public.bookings FOR UPDATE USING (
+    seller_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 12. FAVORITES
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Favorites readable by user or admin" ON public.favorites;
+  CREATE POLICY "Favorites readable by user or admin" ON public.favorites FOR SELECT USING (
+    user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 
+  DROP POLICY IF EXISTS "Favorites insertable by anyone" ON public.favorites;
+  CREATE POLICY "Favorites insertable by anyone" ON public.favorites FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Favorites deletable by user or admin" ON public.favorites;
+  CREATE POLICY "Favorites deletable by user or admin" ON public.favorites FOR DELETE USING (
+    user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 13. REVIEWS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Approved reviews are publicly readable" ON public.reviews;
+  CREATE POLICY "Approved reviews are publicly readable" ON public.reviews FOR SELECT USING (
+    status = 'approved' OR customer_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+
+  DROP POLICY IF EXISTS "Anyone can submit reviews" ON public.reviews;
+  CREATE POLICY "Anyone can submit reviews" ON public.reviews FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Reviews manageable by admin" ON public.reviews;
+  CREATE POLICY "Reviews manageable by admin" ON public.reviews FOR ALL USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 14. NOTIFICATIONS
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Notifications readable by recipient" ON public.notifications;
   CREATE POLICY "Notifications readable by recipient" ON public.notifications FOR SELECT USING (
-    auth.uid() = user_id OR public.is_admin()
+    user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
+  );
+
+  DROP POLICY IF EXISTS "Notifications manageable by admin or recipient" ON public.notifications;
+  CREATE POLICY "Notifications manageable by admin or recipient" ON public.notifications FOR ALL USING (
+    user_id = auth.uid() OR public.is_admin() OR auth.uid() IS NULL
   );
 END $$;
 
+-- 15. WEBSITE SETTINGS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Website settings are publicly readable" ON public.website_settings;
+  CREATE POLICY "Website settings are publicly readable" ON public.website_settings FOR SELECT USING (true);
+
+  DROP POLICY IF EXISTS "Website settings manageable by admin" ON public.website_settings;
+  CREATE POLICY "Website settings manageable by admin" ON public.website_settings FOR ALL USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 16. NEWSLETTER SUBSCRIBERS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Newsletter subscribers insertable by anyone" ON public.newsletter_subscribers;
+  CREATE POLICY "Newsletter subscribers insertable by anyone" ON public.newsletter_subscribers FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Newsletter subscribers readable by admin" ON public.newsletter_subscribers;
+  CREATE POLICY "Newsletter subscribers readable by admin" ON public.newsletter_subscribers FOR SELECT USING (
+    public.is_admin() OR auth.uid() IS NULL
+  );
+END $$;
+
+-- 17. LEADS (CRM)
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Leads readable by admin" ON public.leads;
+  CREATE POLICY "Leads readable by admin" ON public.leads FOR SELECT USING (true);
+
+  DROP POLICY IF EXISTS "Leads manageable by admin" ON public.leads;
+  CREATE POLICY "Leads manageable by admin" ON public.leads FOR ALL USING (true);
+END $$;
+
+-- 18. FINANCING APPLICATIONS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Financing applications readable" ON public.financing_applications;
+  CREATE POLICY "Financing applications readable" ON public.financing_applications FOR SELECT USING (true);
+
+  DROP POLICY IF EXISTS "Anyone can submit financing application" ON public.financing_applications;
+  CREATE POLICY "Anyone can submit financing application" ON public.financing_applications FOR INSERT WITH CHECK (true);
+
+  DROP POLICY IF EXISTS "Financing applications updatable by admin" ON public.financing_applications;
+  CREATE POLICY "Financing applications updatable by admin" ON public.financing_applications FOR ALL USING (true);
+END $$;
+
+-- 19. MARKETING CAMPAIGNS
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Marketing campaigns readable" ON public.marketing_campaigns;
+  CREATE POLICY "Marketing campaigns readable" ON public.marketing_campaigns FOR SELECT USING (true);
+
+  DROP POLICY IF EXISTS "Marketing campaigns manageable" ON public.marketing_campaigns;
+  CREATE POLICY "Marketing campaigns manageable" ON public.marketing_campaigns FOR ALL USING (true);
+END $$;
+
 -- ----------------------------------------------------------------------------
--- 17. SEED INITIAL DATA (Matching Approved Reference Designs)
+-- 20. SUPABASE STORAGE BUCKETS (FOR CAR PHOTOS AND DOCUMENTS)
 -- ----------------------------------------------------------------------------
-INSERT INTO public.brands (name, slug, country, vehicle_count) VALUES
-('Toyota', 'toyota', 'Japan', 92),
-('BMW', 'bmw', 'Germany', 48),
-('Mercedes-Benz', 'mercedes-benz', 'Germany', 36),
-('Ford', 'ford', 'USA', 28),
-('Honda', 'honda', 'Japan', 24),
-('Land Rover', 'land-rover', 'UK', 18),
-('Nissan', 'nissan', 'Japan', 14),
-('Mitsubishi', 'mitsubishi', 'Japan', 12)
-ON CONFLICT (name) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('vehicle-images', 'vehicle-images', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
 
-INSERT INTO public.categories (name, slug, description, display_order) VALUES
-('New Cars', 'new-cars', 'Latest models straight from showroom', 1),
-('Used Cars', 'used-cars', 'Quality pre-owned certified vehicles', 2),
-('Accessories', 'accessories', 'Genuine and aftermarket quality parts', 3),
-('Motorbike', 'motorbike', 'Explore top motorbikes and scooters', 4),
-('Electric', 'electric', 'Eco-friendly hybrid and electric vehicles', 5),
-('Other Vehicles', 'other-vehicles', 'Commercial trucks, pickups, and vans', 6)
-ON CONFLICT (name) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('dealership-assets', 'dealership-assets', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Initial Featured Vehicles (matching exact Reference 1 & 4 numbers)
-INSERT INTO public.vehicles (
-  title, slug, brand, model, variant, vehicle_type, condition, year, mileage,
-  fuel_type, transmission, price, location, city, region, featured_status, publication_status
-) VALUES
-(
-  'Toyota Land Cruiser', 'toyota-land-cruiser-2023', 'Toyota', 'Land Cruiser 300', 'VXR V6 Twin-Turbo',
-  'SUV', 'Used', 2023, 12000, 'Diesel', 'Automatic', 76500000, 'Dar es Salaam', 'Dar es Salaam', 'Dar es Salaam', true, 'approved'
-),
-(
-  'BMW 3 Series', 'bmw-3-series-2022', 'BMW', '3 Series 330i', 'M Sport Package',
-  'Sedan', 'Used', 2022, 18000, 'Petrol', 'Automatic', 45000000, 'Dar es Salaam', 'Dar es Salaam', 'Dar es Salaam', true, 'approved'
-),
-(
-  'Honda Civic', 'honda-civic-2021', 'Honda', 'Civic', 'RS Turbo 1.5L',
-  'Sedan', 'Used', 2021, 24000, 'Petrol', 'Automatic', 28500000, 'Arusha', 'Arusha', 'Arusha', true, 'approved'
-),
-(
-  'Ford Ranger', 'ford-ranger-2023', 'Ford', 'Ranger', 'Wildtrak Bi-Turbo 4x4',
-  'Pickup', 'Used', 2023, 15000, 'Diesel', 'Automatic', 42000000, 'Mwanza', 'Mwanza', 'Mwanza', true, 'approved'
-),
-(
-  'Toyota RAV4', 'toyota-rav4-2022', 'Toyota', 'RAV4', 'Adventure AWD 2.5L',
-  'SUV', 'Used', 2022, 20000, 'Petrol', 'Automatic', 38800000, 'Zanzibar', 'Zanzibar', 'Zanzibar', true, 'approved'
-),
-(
-  'Mercedes-Benz C-Class', 'mercedes-benz-c-class-2022', 'Mercedes-Benz', 'C-Class', 'C200 AMG Line',
-  'Sedan', 'Used', 2022, 16000, 'Petrol', 'Automatic', 68000000, 'Dar es Salaam', 'Dar es Salaam', 'Dar es Salaam', true, 'approved'
-)
-ON CONFLICT (slug) DO NOTHING;
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Public can view vehicle images" ON storage.objects;
+  CREATE POLICY "Public can view vehicle images" ON storage.objects FOR SELECT USING (bucket_id IN ('vehicle-images', 'dealership-assets'));
+  
+  DROP POLICY IF EXISTS "Anyone can upload vehicle images" ON storage.objects;
+  CREATE POLICY "Anyone can upload vehicle images" ON storage.objects FOR INSERT WITH CHECK (bucket_id IN ('vehicle-images', 'dealership-assets'));
 
--- Initial Reviews
-INSERT INTO public.reviews (customer_name, customer_city, rating, comment, status) VALUES
-('Ahmed S.', 'Dar es Salaam', 5, 'Amazing service and genuine cars. Swahivo made the whole buying process so easy!', 'approved'),
-('Fatma A.', 'Zanzibar', 5, 'I got my dream car with flexible payments. Highly recommend Swahivo!', 'approved'),
-('Juma M.', 'Arusha', 5, 'Professional, transparent and trustworthy. The best car dealership in Tanzania.', 'approved')
-ON CONFLICT DO NOTHING;
+  DROP POLICY IF EXISTS "Anyone can update vehicle images" ON storage.objects;
+  CREATE POLICY "Anyone can update vehicle images" ON storage.objects FOR UPDATE USING (bucket_id IN ('vehicle-images', 'dealership-assets'));
 
--- Initial Website Settings
-INSERT INTO public.website_settings (key, value) VALUES
-('hero', '{"headline": "Find Your Perfect Drive", "subtext": "Swahivo Car Dealership brings you a wide range of new and pre-owned vehicles with trusted service, flexible finance options, and a smooth buying experience.", "badge": "PREMIUM CARS. REAL PEOPLE. BETTER JOURNEYS."}'::JSONB),
-('contact', '{"address": "Kiembe Samaki - Zanzibar Tanzania", "phone": "+255 770 565656", "email": "auto.link@yahoo.com", "hours": "Mon - Sat: 8:00 AM - 6:00 PM"}'::JSONB)
-ON CONFLICT (key) DO NOTHING;
+  DROP POLICY IF EXISTS "Anyone can delete vehicle images" ON storage.objects;
+  CREATE POLICY "Anyone can delete vehicle images" ON storage.objects FOR DELETE USING (bucket_id IN ('vehicle-images', 'dealership-assets'));
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 21. REALTIME REPLICATION SETUP
+-- ----------------------------------------------------------------------------
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.enquiries;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.bookings;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.vehicles;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;

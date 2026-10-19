@@ -7,20 +7,25 @@ import {
 import { DealershipService } from '../../services/dealershipService';
 import { Vehicle } from '../../types';
 
+import { useAuth } from '../../contexts/AuthContext';
+
 export const BuyerSavedCarsPage: React.FC = () => {
+  const { user } = useAuth();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const activeUserId = user?.user_id || user?.id;
+
   useEffect(() => {
     loadSaved();
-  }, []);
+  }, [activeUserId]);
 
   const loadSaved = async () => {
     setLoading(true);
     const [allVehicles, favIds] = await Promise.all([
       DealershipService.getVehicles(),
-      Promise.resolve(DealershipService.getFavorites())
+      DealershipService.getFavorites(activeUserId)
     ]);
     setVehicles(allVehicles);
     setSavedIds(favIds);
@@ -28,7 +33,7 @@ export const BuyerSavedCarsPage: React.FC = () => {
   };
 
   const handleRemove = async (id: string) => {
-    const updated = await DealershipService.toggleFavorite(id);
+    const updated = await DealershipService.toggleFavorite(id, activeUserId);
     setSavedIds(updated);
   };
 

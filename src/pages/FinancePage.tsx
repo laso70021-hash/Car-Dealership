@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import { CreditCard, Calculator, CheckCircle2, ShieldCheck, Building2, Send } from 'lucide-react';
 
+import { DealershipService } from '../services/dealershipService';
+import { useAuth } from '../contexts/AuthContext';
+
 export const FinancePage: React.FC = () => {
+  const { user } = useAuth();
   const [vehiclePrice, setVehiclePrice] = useState<number>(50000000);
   const [downPaymentPct, setDownPaymentPct] = useState<number>(20);
   const [loanTermMonths, setLoanTermMonths] = useState<number>(36);
   const [interestRatePct] = useState<number>(12); // 12% annual interest
 
-  const [applicantName, setApplicantName] = useState('');
-  const [applicantPhone, setApplicantPhone] = useState('');
-  const [applicantIncome, setApplicantIncome] = useState('');
+  const [applicantName, setApplicantName] = useState(user?.full_name || user?.name || '');
+  const [applicantPhone, setApplicantPhone] = useState(user?.phone || '');
+  const [applicantEmail, setApplicantEmail] = useState(user?.email || '');
+  const [applicantIncome, setApplicantIncome] = useState('3,500,000');
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [applicationRef, setApplicationRef] = useState('');
 
   // Calculation
   const downPayment = (vehiclePrice * downPaymentPct) / 100;
@@ -22,10 +29,35 @@ export const FinancePage: React.FC = () => {
   const totalRepayment = monthlyPayment * loanTermMonths;
   const totalInterest = totalRepayment - principal;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 4000);
+    if (!applicantName.trim() || !applicantPhone.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await DealershipService.submitFinancingApplication({
+        customer_id: user?.user_id || user?.id,
+        applicant_name: applicantName,
+        applicant_phone: applicantPhone,
+        applicant_email: applicantEmail || undefined,
+        vehicle_title: 'Custom Financed Vehicle',
+        vehicle_price: vehiclePrice,
+        down_payment: downPayment,
+        loan_amount: principal,
+        loan_term_months: loanTermMonths,
+        monthly_payment: Math.round(monthlyPayment),
+        monthly_income: applicantIncome,
+        notes: `Down Payment: ${downPaymentPct}%, Term: ${loanTermMonths} months, Rate: ${interestRatePct}%`
+      });
+
+      setApplicationRef(res.application_number);
+      setSubmitted(true);
+      setTimeout(() => setSubmitted(false), 5000);
+    } catch (err) {
+      console.error('Financing submission error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
