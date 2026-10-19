@@ -231,15 +231,21 @@ export const AdminLayout: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => switchRole('seller')}
-                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
+                    onClick={() => {
+                      switchRole('seller');
+                      navigate('/seller/dashboard');
+                    }}
+                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition"
                     title="Switch to seller portal"
                   >
                     Seller Portal
                   </button>
                   <button
-                    onClick={() => switchRole('buyer')}
-                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
+                    onClick={() => {
+                      switchRole('buyer');
+                      navigate('/account/dashboard');
+                    }}
+                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition"
                     title="Switch to buyer portal"
                   >
                     Buyer Portal

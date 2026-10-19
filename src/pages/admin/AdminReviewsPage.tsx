@@ -24,9 +24,9 @@ export const AdminReviewsPage: React.FC = () => {
   };
 
   const filtered = reviews.filter((r) =>
-    r.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.customer_name || r.user_name || '').toLowerCase().includes(search.toLowerCase()) ||
     r.comment.toLowerCase().includes(search.toLowerCase()) ||
-    r.customer_city.toLowerCase().includes(search.toLowerCase())
+    (r.customer_city || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (

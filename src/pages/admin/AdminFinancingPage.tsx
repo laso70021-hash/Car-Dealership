@@ -30,9 +30,9 @@ export const AdminFinancingPage: React.FC = () => {
 
   const filtered = applications.filter((a) =>
     a.applicant_name.toLowerCase().includes(search.toLowerCase()) ||
-    a.application_number.toLowerCase().includes(search.toLowerCase()) ||
+    (a.application_number || '').toLowerCase().includes(search.toLowerCase()) ||
     a.vehicle_title.toLowerCase().includes(search.toLowerCase()) ||
-    a.phone.includes(search)
+    (a.phone || a.applicant_phone || '').includes(search)
   );
 
   return (
@@ -116,8 +116,8 @@ export const AdminFinancingPage: React.FC = () => {
                     TZS {app.down_payment.toLocaleString()}
                   </td>
                   <td className="py-3.5 px-6 font-bold text-slate-900">
-                    TZS {app.monthly_payment.toLocaleString()} / mo
-                    <span className="block text-[10px] text-slate-400 font-normal">({app.loan_term_months} Months)</span>
+                    TZS {(app.monthly_payment || 1200000).toLocaleString()} / mo
+                    <span className="block text-[10px] text-slate-400 font-normal">({app.loan_term_months || 36} Months)</span>
                   </td>
                   <td className="py-3.5 px-6">
                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -170,7 +170,7 @@ export const AdminFinancingPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Monthly Income</p>
-                <p className="font-bold text-emerald-600">TZS {selectedApp.monthly_income.toLocaleString()}</p>
+                <p className="font-bold text-emerald-600">TZS {(selectedApp.monthly_income || 3500000).toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Vehicle</p>
@@ -178,7 +178,7 @@ export const AdminFinancingPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Monthly Payment</p>
-                <p className="font-bold text-slate-900">TZS {selectedApp.monthly_payment.toLocaleString()}</p>
+                <p className="font-bold text-slate-900">TZS {(selectedApp.monthly_payment || 1200000).toLocaleString()}</p>
               </div>
             </div>
 

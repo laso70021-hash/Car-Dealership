@@ -642,7 +642,7 @@ export const AdminDashboard: React.FC = () => {
                           <td className="py-3 font-semibold text-slate-900">{ord.customer_name}</td>
                           <td className="py-3 text-slate-600">{ord.product_name}</td>
                           <td className="py-3 font-bold text-slate-900">
-                            {new Intl.NumberFormat('en-US').format(ord.amount)}
+                            {new Intl.NumberFormat('en-US').format(ord.amount || ord.total_amount || 0)}
                           </td>
                           <td className="py-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBadge}`}>

@@ -136,7 +136,7 @@ export const AdminVehiclesPage: React.FC = () => {
     setFormYear(v.year);
     setFormPrice(v.price);
     setFormMileage(v.mileage);
-    setFormFuel(v.fuel_type);
+    setFormFuel((v.fuel_type as any) || 'Petrol');
     setFormTransmission(v.transmission);
     setFormCondition(v.condition === 'New' ? 'New' : 'Used');
     setFormLocation(v.location || 'Dar es Salaam');

@@ -2,8 +2,10 @@ export type UserRole = 'admin' | 'seller' | 'buyer';
 
 export interface UserProfile {
   user_id: string;
+  id?: string;
   role: UserRole;
   full_name: string | null;
+  name?: string | null;
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
@@ -59,12 +61,13 @@ export interface Vehicle {
   model: string;
   variant?: string | null;
   vehicle_type: string;
-  condition: 'New' | 'Used' | 'Pre-Owned';
+  condition: 'New' | 'Used' | 'Pre-Owned' | 'Certified Pre-Owned';
   year: number;
   mileage: number;
-  fuel_type: 'Petrol' | 'Diesel' | 'Hybrid' | 'Electric';
+  fuel_type: 'Petrol' | 'Diesel' | 'Hybrid' | 'Electric' | string;
   transmission: 'Automatic' | 'Manual';
   engine_capacity?: string | null;
+  engine_size?: string | null;
   color?: string | null;
   seats?: number;
   doors?: number;
@@ -127,8 +130,10 @@ export interface Order {
   order_number: string;
   customer_id?: string | null;
   customer_name: string;
-  phone: string;
-  email: string;
+  phone?: string;
+  customer_phone?: string;
+  email?: string;
+  customer_email?: string;
   city?: string;
   address?: string;
   country?: string;
@@ -137,12 +142,15 @@ export interface Order {
   vehicle_id?: string | null;
   accessory_id?: string | null;
   seller_id?: string | null;
-  quantity: number;
+  quantity?: number;
   amount: number;
-  currency: string;
+  total_amount?: number;
+  currency?: string;
   notes?: string | null;
-  status: 'Pending' | 'Processing' | 'Confirmed' | 'Completed' | 'Cancelled';
-  payment_status: 'unpaid' | 'pending_verification' | 'paid' | 'refunded';
+  status: 'Pending' | 'Processing' | 'Confirmed' | 'Completed' | 'Cancelled' | 'pending' | 'processing' | 'confirmed' | 'completed' | 'cancelled';
+  payment_status?: 'unpaid' | 'pending_verification' | 'paid' | 'refunded';
+  items?: Array<{ name: string; quantity: number; price?: number }>;
+  shipping_address?: { street?: string; city?: string; district?: string };
   timeline?: Array<{ status: string; date: string; note?: string }>;
   created_at?: string;
   updated_at?: string;
@@ -159,7 +167,10 @@ export interface Enquiry {
   customer_phone?: string;
   seller_id?: string | null;
   message: string;
-  status: 'New' | 'Contacted' | 'Pending' | 'Responded' | 'Closed';
+  reply?: string | null;
+  replied_at?: string | null;
+  replied_by?: string | null;
+  status: 'New' | 'Contacted' | 'Pending' | 'Responded' | 'Closed' | 'pending' | 'in_progress' | 'closed';
   last_message_at?: string;
   created_at?: string;
 }
@@ -167,17 +178,21 @@ export interface Enquiry {
 export interface Booking {
   id: string;
   booking_number: string;
-  booking_type: 'test_drive' | 'service';
+  booking_reference?: string;
+  booking_type?: 'test_drive' | 'service';
   vehicle_id?: string | null;
+  vehicle_title?: string;
   service_id?: string | null;
   customer_id?: string | null;
   customer_name: string;
-  customer_email: string;
+  customer_email?: string;
   customer_phone: string;
   seller_id?: string | null;
-  booking_date: string;
-  booking_time: string;
-  status: 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled';
+  booking_date?: string;
+  preferred_date?: string;
+  booking_time?: string;
+  preferred_time?: string;
+  status: 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
   notes?: string | null;
   created_at?: string;
 }
@@ -185,11 +200,14 @@ export interface Booking {
 export interface CustomerReview {
   id: string;
   customer_name: string;
+  user_name?: string;
   customer_city: string;
   customer_avatar?: string;
   rating: number;
   comment: string;
+  verified_buyer?: boolean;
   status: 'approved' | 'pending' | 'rejected';
+  created_at?: string;
 }
 
 export interface NotificationItem {
@@ -237,20 +255,26 @@ export interface FinancingApplication {
   id: string;
   application_number: string;
   applicant_name: string;
-  national_id: string;
+  applicant_email?: string;
+  applicant_phone?: string;
+  national_id?: string;
   phone: string;
-  email: string;
-  employment_status: 'Employed' | 'Self-Employed' | 'Business Owner';
+  email?: string;
+  employment_status?: 'Employed' | 'Self-Employed' | 'Business Owner';
   monthly_income: number;
-  vehicle_id: string;
+  vehicle_id?: string;
   vehicle_title: string;
   vehicle_price: number;
   down_payment: number;
-  loan_term_months: number;
+  loan_amount?: number;
+  loan_term_months?: number;
+  loan_period_months?: number;
+  term_months?: number;
   monthly_payment: number;
-  status: 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'More Info Needed';
+  bank_partner?: string;
+  status: 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'More Info Needed' | 'approved' | 'under_review' | 'pending' | 'rejected';
   notes?: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface MarketingCampaign {

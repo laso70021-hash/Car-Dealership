@@ -451,7 +451,7 @@ export const AdminOverviewPage: React.FC = () => {
                   <p className="text-[11px] text-slate-500">{ord.customer_name} • {ord.city}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-extrabold text-slate-900">TZS {ord.amount.toLocaleString()}</p>
+                  <p className="text-xs font-extrabold text-slate-900">TZS {(ord.amount || ord.total_amount || 0).toLocaleString()}</p>
                   <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mt-1 ${
                     ord.status === 'Completed'
                       ? 'bg-emerald-50 text-emerald-700'

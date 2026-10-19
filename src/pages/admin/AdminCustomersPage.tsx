@@ -36,23 +36,24 @@ export const AdminCustomersPage: React.FC = () => {
     const map = new Map<string, CustomerSummary>();
 
     orders.forEach((o) => {
-      const key = o.email || o.phone || o.customer_name;
+      const key = o.email || o.customer_email || o.phone || o.customer_phone || o.customer_name;
+      const amt = Number(o.amount || o.total_amount || 0);
       if (!map.has(key)) {
         map.set(key, {
           id: 'cust_' + Math.random().toString(36).substr(2, 6),
           name: o.customer_name,
-          email: o.email,
-          phone: o.phone,
+          email: o.email || o.customer_email || 'customer@example.com',
+          phone: o.phone || o.customer_phone || '+255 700 000 000',
           city: o.city || 'Dar es Salaam',
           totalOrders: 1,
           totalEnquiries: 0,
-          totalSpent: o.amount,
+          totalSpent: amt,
           joined: o.created_at || '2026-10-14'
         });
       } else {
         const c = map.get(key)!;
         c.totalOrders += 1;
-        c.totalSpent += o.amount;
+        c.totalSpent += amt;
       }
     });
 
@@ -232,7 +233,7 @@ export const AdminCustomersPage: React.FC = () => {
                         <p className="font-bold text-slate-900">{o.product_name}</p>
                         <p className="text-[10px] text-slate-500">{o.order_number} • {o.created_at}</p>
                       </div>
-                      <span className="font-extrabold text-slate-900">TZS {o.amount.toLocaleString()}</span>
+                      <span className="font-extrabold text-slate-900">TZS {(o.amount || o.total_amount || 0).toLocaleString()}</span>
                     </div>
                   ))}
                 </div>

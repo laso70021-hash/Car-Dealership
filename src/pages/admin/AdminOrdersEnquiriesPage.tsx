@@ -67,7 +67,7 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
   const filteredOrders = orders.filter((o) =>
     o.order_number.toLowerCase().includes(search.toLowerCase()) ||
     o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-    o.product_name.toLowerCase().includes(search.toLowerCase())
+    (o.product_name || o.items?.[0]?.name || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const filteredEnquiries = enquiries.filter((e) =>
@@ -153,7 +153,7 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
                       {ord.product_name}
                     </td>
                     <td className="py-3.5 px-6 font-extrabold text-slate-900">
-                      TZS {ord.amount.toLocaleString()}
+                      TZS {(ord.amount || ord.total_amount || 0).toLocaleString()}
                     </td>
                     <td className="py-3.5 px-6">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${

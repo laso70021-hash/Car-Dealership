@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Car, Plus, Layers, MessageSquare, ShoppingBag,
   Users, Store, Zap, DollarSign, Star, BarChart3, Wallet, Settings,
@@ -11,6 +11,7 @@ import { DatabaseStatusBanner } from '../components/common/DatabaseStatusBanner'
 
 export const SellerLayout: React.FC = () => {
   const { user, switchRole } = useAuth();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navMenuItems = [
@@ -184,15 +185,21 @@ export const SellerLayout: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => switchRole('admin')}
-                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
+                    onClick={() => {
+                      switchRole('admin');
+                      navigate('/admin/dashboard');
+                    }}
+                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition"
                     title="Switch to admin portal"
                   >
                     Admin Portal
                   </button>
                   <button
-                    onClick={() => switchRole('buyer')}
-                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
+                    onClick={() => {
+                      switchRole('buyer');
+                      navigate('/account/dashboard');
+                    }}
+                    className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition"
                     title="Switch to buyer portal"
                   >
                     Buyer Portal

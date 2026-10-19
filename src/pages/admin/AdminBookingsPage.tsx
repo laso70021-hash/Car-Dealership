@@ -28,7 +28,7 @@ export const AdminBookingsPage: React.FC = () => {
     const matchesType = typeFilter === 'all' || b.booking_type === typeFilter;
     const matchesSearch =
       b.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      b.booking_number.toLowerCase().includes(search.toLowerCase()) ||
+      (b.booking_number || b.booking_reference || '').toLowerCase().includes(search.toLowerCase()) ||
       b.customer_phone.includes(search);
     return matchesType && matchesSearch;
   });

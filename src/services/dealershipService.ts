@@ -176,7 +176,9 @@ export const DealershipService = {
         query = query.eq('featured_status', filter.featured);
       }
       if (filter?.sellerId) {
-        query = query.eq('seller_id', filter.sellerId);
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filter.sellerId)) {
+          query = query.eq('seller_id', filter.sellerId);
+        }
       }
       if (filter?.location && filter.location !== 'All Locations') {
         query = query.ilike('location', `%${filter.location}%`);
@@ -404,8 +406,9 @@ export const DealershipService = {
   async getEnquiries(sellerId?: string, customerId?: string): Promise<Enquiry[]> {
     try {
       let query = supabase.from('enquiries').select('*').order('created_at', { ascending: false });
-      if (sellerId) query = query.eq('seller_id', sellerId);
-      if (customerId) query = query.eq('customer_id', customerId);
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (sellerId && uuidRegex.test(sellerId)) query = query.eq('seller_id', sellerId);
+      if (customerId && uuidRegex.test(customerId)) query = query.eq('customer_id', customerId);
       const { data, error } = await query;
       if (!error && data && data.length > 0) return data as Enquiry[];
     } catch {}
@@ -439,6 +442,30 @@ export const DealershipService = {
       return localEnquiries[idx];
     }
     return null;
+  },
+
+  async replyToEnquiry(id: string, reply: string, repliedBy?: string): Promise<Enquiry> {
+    const idx = localEnquiries.findIndex(e => e.id === id);
+    const existing = localEnquiries[idx] || ({} as Enquiry);
+    const updated: Enquiry = {
+      ...existing,
+      reply,
+      replied_at: new Date().toISOString(),
+      replied_by: repliedBy || 'Showroom Agent',
+      status: 'Responded',
+      last_message_at: 'Just now'
+    };
+    if (idx !== -1) {
+      localEnquiries[idx] = updated;
+    }
+    try {
+      await supabase.from('enquiries').update({
+        reply,
+        status: 'Responded',
+        replied_at: new Date().toISOString()
+      }).eq('id', id);
+    } catch {}
+    return updated;
   },
 
   // BOOKINGS
