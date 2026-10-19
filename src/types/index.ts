@@ -7,10 +7,10 @@ export interface UserProfile {
   full_name: string | null;
   name?: string | null;
   email: string | null;
-  phone: string | null;
-  avatar_url: string | null;
-  city: string | null;
-  address: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+  city?: string | null;
+  address?: string | null;
   bio?: string | null;
   is_verified?: boolean;
   created_at?: string;
@@ -254,6 +254,7 @@ export interface Lead {
 export interface FinancingApplication {
   id: string;
   application_number: string;
+  customer_id?: string;
   applicant_name: string;
   applicant_email?: string;
   applicant_phone?: string;
@@ -280,6 +281,7 @@ export interface FinancingApplication {
 export interface MarketingCampaign {
   id: string;
   title: string;
+  name?: string;
   type: 'Social' | 'Featured Vehicle' | 'Seasonal Discount' | 'Banner Spotlight';
   budget: number;
   spent: number;

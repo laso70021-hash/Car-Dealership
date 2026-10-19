@@ -20,6 +20,8 @@ export const SellerEnquiriesPage: React.FC = () => {
 
   useEffect(() => {
     loadEnquiries();
+    const unsub = DealershipService.subscribeToTable('enquiries', () => loadEnquiries());
+    return () => unsub();
   }, [sellerId]);
 
   const loadEnquiries = async () => {

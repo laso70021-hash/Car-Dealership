@@ -1,24 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User, Mail, Phone, MapPin, Save, CheckCircle2, ShieldCheck,
   Camera, Lock
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase, sanitizeUuid } from '../../integrations/supabase/client';
 
 export const BuyerProfilePage: React.FC = () => {
   const { user } = useAuth();
+  const uid = sanitizeUuid(user?.user_id || user?.id) || 'be3c05de-2678-471d-90e7-8010a6bf9010';
 
-  const [name, setName] = useState(user?.name || 'Emmanuel Mrema');
-  const [email, setEmail] = useState(user?.email || 'emmanuel.mrema@gmail.com');
-  const [phone, setPhone] = useState('+255 765 443 322');
-  const [city, setCity] = useState('Dar es Salaam');
+  const [name, setName] = useState(user?.full_name || user?.name || 'Salim Khamis');
+  const [email, setEmail] = useState(user?.email || 'buyer@swahivo.com');
+  const [phone, setPhone] = useState(user?.phone || '+255 777 123456');
+  const [city, setCity] = useState(user?.city || 'Dar es Salaam');
   const [occupation, setOccupation] = useState('Business Executive');
   const [savedMsg, setSavedMsg] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', uid)
+          .single();
+        if (!error && data) {
+          if (data.full_name) setName(data.full_name);
+          if (data.email) setEmail(data.email);
+          if (data.phone) setPhone(data.phone);
+          if (data.city) setCity(data.city);
+        }
+      } catch (e) {
+        console.warn('Load buyer profile error:', e);
+      }
+    };
+    loadProfile();
+  }, [uid]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 3000);
+    try {
+      await supabase.from('profiles').update({
+        full_name: name,
+        phone,
+        city,
+        updated_at: new Date().toISOString()
+      }).eq('user_id', uid);
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 3000);
+    } catch (err) {
+      console.error('Failed to update buyer profile:', err);
+    }
   };
 
   return (

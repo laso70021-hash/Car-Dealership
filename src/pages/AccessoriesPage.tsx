@@ -1,97 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShoppingBag, Search, Sparkles, Check, CheckCircle2 } from 'lucide-react';
-
-interface AccessoryItem {
-  id: string;
-  name: string;
-  category: string;
-  brand: string;
-  price: number;
-  image: string;
-  compatibility: string;
-  stock: number;
-}
-
-const SAMPLE_ACCESSORIES: AccessoryItem[] = [
-  {
-    id: 'a1',
-    name: '20" Off-Road Alloy Wheel Set (4pcs)',
-    category: 'Wheels & Rims',
-    brand: 'Fuel Off-Road',
-    price: 3800000,
-    image: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&q=80',
-    compatibility: 'Toyota Land Cruiser, Hilux, Ford Ranger',
-    stock: 8
-  },
-  {
-    id: 'a2',
-    name: 'Harman Kardon Premium Subwoofer System',
-    category: 'Audio & Tech',
-    brand: 'Harman Kardon',
-    price: 1850000,
-    image: 'https://images.unsplash.com/photo-1545454675-3531b543be5d?w=500&q=80',
-    compatibility: 'Universal 12V Installation',
-    stock: 14
-  },
-  {
-    id: 'a3',
-    name: 'Ceramic Pro 9H Paint Protection Kit',
-    category: 'Detailing',
-    brand: 'Ceramic Pro',
-    price: 950000,
-    image: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500&q=80',
-    compatibility: 'All Vehicles',
-    stock: 22
-  },
-  {
-    id: 'a4',
-    name: 'Heavy Duty LED Spot Roof Bar Light',
-    category: 'Lighting',
-    brand: 'Stedi Australia',
-    price: 1200000,
-    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=500&q=80',
-    compatibility: '4x4 SUVs and Pickups',
-    stock: 19
-  },
-  {
-    id: 'a5',
-    name: 'WeatherTech Custom All-Weather Floor Mats',
-    category: 'Interior',
-    brand: 'WeatherTech',
-    price: 650000,
-    image: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?w=500&q=80',
-    compatibility: 'Toyota Prado, Land Cruiser 300, RAV4',
-    stock: 30
-  },
-  {
-    id: 'a6',
-    name: 'Brembo High Performance Brake Kit',
-    category: 'Performance',
-    brand: 'Brembo',
-    price: 4500000,
-    image: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&q=80',
-    compatibility: 'BMW 3/5 Series, Mercedes C/E Class',
-    stock: 5
-  }
-];
+import { DealershipService } from '../services/dealershipService';
+import { useAuth } from '../contexts/AuthContext';
+import { Accessory } from '../types';
 
 export const AccessoriesPage: React.FC = () => {
-  const [accessories, setAccessories] = useState<AccessoryItem[]>(SAMPLE_ACCESSORIES);
+  const { user } = useAuth();
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [orderedId, setOrderedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const data = await DealershipService.getAccessories();
+        setAccessories(data);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   const categories = ['All', 'Wheels & Rims', 'Audio & Tech', 'Detailing', 'Lighting', 'Interior', 'Performance'];
 
   const filtered = accessories.filter((item) => {
     if (selectedCategory !== 'All' && item.category !== selectedCategory) return false;
-    if (search && !item.name.toLowerCase().includes(search.toLowerCase()) && !item.brand.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !item.name.toLowerCase().includes(search.toLowerCase()) && !(item.brand && item.brand.toLowerCase().includes(search.toLowerCase()))) return false;
     return true;
   });
 
-  const handleOrder = (id: string) => {
-    setOrderedId(id);
-    setTimeout(() => setOrderedId(null), 3000);
+  const handleOrder = async (item: Accessory) => {
+    try {
+      await DealershipService.createOrder({
+        customer_name: user?.full_name || user?.name || 'Walk-in Customer',
+        phone: user?.phone || '+255 777 123456',
+        email: user?.email || 'buyer@swahivo.com',
+        city: user?.city || 'Dar es Salaam',
+        product_name: item.name,
+        accessory_id: item.id,
+        quantity: 1,
+        amount: item.price,
+        currency: item.currency || 'TZS',
+        status: 'Pending',
+        payment_status: 'pending_verification',
+        notes: `Accessory order for ${item.name}`
+      });
+      setOrderedId(item.id);
+      setTimeout(() => setOrderedId(null), 3000);
+    } catch (err) {
+      console.error('Failed to create accessory order:', err);
+    }
   };
 
   return (

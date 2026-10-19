@@ -1,20 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell, CheckCircle2, Clock, AlertCircle, Calendar, MessageSquare,
   Check, Trash2
 } from 'lucide-react';
-import { INITIAL_NOTIFICATIONS } from '../../data/initialData';
+import { DealershipService } from '../../services/dealershipService';
+import { useAuth } from '../../contexts/AuthContext';
 import { NotificationItem } from '../../types';
 
 export const BuyerNotificationsPage: React.FC = () => {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const handleMarkAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  useEffect(() => {
+    loadNotifications();
+    const unsub = DealershipService.subscribeToTable('notifications', () => loadNotifications());
+    return () => unsub();
+  }, [user]);
+
+  const loadNotifications = async () => {
+    const data = await DealershipService.getNotifications(user?.user_id || user?.id);
+    setNotifications(data);
   };
 
-  const handleToggleRead = (id: string) => {
+  const handleMarkAllRead = async () => {
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    for (const n of notifications) {
+      if (!n.read) await DealershipService.markNotificationRead(n.id);
+    }
+  };
+
+  const handleToggleRead = async (id: string) => {
     setNotifications(notifications.map(n => n.id === id ? { ...n, read: !n.read } : n));
+    await DealershipService.markNotificationRead(id);
   };
 
   const handleClear = () => {

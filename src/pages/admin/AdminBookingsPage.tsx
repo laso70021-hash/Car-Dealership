@@ -10,6 +10,8 @@ export const AdminBookingsPage: React.FC = () => {
 
   useEffect(() => {
     loadBookings();
+    const unsub = DealershipService.subscribeToTable('bookings', () => loadBookings());
+    return () => unsub();
   }, []);
 
   const loadBookings = async () => {

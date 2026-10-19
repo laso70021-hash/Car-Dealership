@@ -17,8 +17,7 @@ export const BuyerLayout: React.FC = () => {
   const [savedCount, setSavedCount] = useState(0);
 
   useEffect(() => {
-    const favs = DealershipService.getFavorites();
-    setSavedCount(favs.length);
+    DealershipService.getFavorites().then(favs => setSavedCount(favs.length));
   }, []);
 
   const navMenuItems = [

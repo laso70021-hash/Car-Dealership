@@ -11,7 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export const SellerOrdersBookingsPage: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
-  const sellerId = user?.user_id || user?.id || 'seller-ali-hassan';
+  const sellerId = user?.user_id || user?.id || '8916c8d8-3037-4e54-9ea5-d025cd77e042';
 
   // If path is /seller/bookings default to bookings tab
   const [activeTab, setActiveTab] = useState<'orders' | 'bookings'>(
@@ -24,6 +24,12 @@ export const SellerOrdersBookingsPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const unsub1 = DealershipService.subscribeToTable('orders', () => loadData());
+    const unsub2 = DealershipService.subscribeToTable('bookings', () => loadData());
+    return () => {
+      unsub1();
+      unsub2();
+    };
   }, [sellerId]);
 
   useEffect(() => {

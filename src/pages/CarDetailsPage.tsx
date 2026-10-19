@@ -29,7 +29,8 @@ export const CarDetailsPage: React.FC = () => {
       setVehicle(found);
       if (found) {
         setSelectedImage((found.primary_image && found.primary_image.trim()) || (found.images && found.images[0]) || defaultImg);
-        setIsFavorited(DealershipService.getFavorites().includes(found.id));
+        const favs = await DealershipService.getFavorites();
+        setIsFavorited(favs.includes(found.id));
         const all = await DealershipService.getVehicles();
         setSimilarVehicles(all.filter(v => v.id !== found.id).slice(0, 3));
       }

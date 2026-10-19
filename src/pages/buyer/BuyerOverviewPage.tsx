@@ -20,7 +20,8 @@ export const BuyerOverviewPage: React.FC = () => {
   const loadData = async () => {
     const data = await DealershipService.getVehicles();
     setVehicles(data);
-    setSavedIds(DealershipService.getFavorites());
+    const favs = await DealershipService.getFavorites();
+    setSavedIds(favs);
   };
 
   const savedVehicles = vehicles.filter(v => savedIds.includes(v.id));

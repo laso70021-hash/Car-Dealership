@@ -1,72 +1,29 @@
-import React, { useState } from 'react';
-import { Wrench, ShieldCheck, CheckCircle2, Clock, Calendar, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Wrench, ShieldCheck, CheckCircle2, Clock, Calendar, ArrowRight, Sparkles } from 'lucide-react';
 import { BookingModal } from '../components/modals/BookingModal';
-
-interface ServiceItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  duration: string;
-  features: string[];
-}
-
-const SERVICES_DATA: ServiceItem[] = [
-  {
-    id: 's1',
-    name: 'Full Vehicle Diagnostic & Engine Health Check',
-    description: 'Comprehensive computer diagnostic scanning for engine, transmission, ABS, airbag, and ECU sensors.',
-    price: 150000,
-    duration: '1.5 Hours',
-    features: ['OBD2 Scanner Analysis', 'Battery & Alternator Test', 'Fluid Level Inspection', 'Live Sensor Readout']
-  },
-  {
-    id: 's2',
-    name: 'Major Scheduled Service & Fluid Flush',
-    description: 'Full synthetic oil change, OEM oil filter, air filter, spark plug inspection, brake fluid, and coolant flush.',
-    price: 450000,
-    duration: '3 Hours',
-    features: ['Fully Synthetic Motor Oil', 'OEM Oil & Fuel Filter', 'Spark Plug Check', '60-Point Safety Check']
-  },
-  {
-    id: 's3',
-    name: 'Ceramic Coating & Paint Correction',
-    description: 'Multi-stage machine paint polish to remove swirl marks, followed by 3-year hydrophobic nano-ceramic sealant.',
-    price: 850000,
-    duration: '1 Day',
-    features: ['Multi-Stage Machine Polish', 'Nano-Ceramic Sealant', 'Hydrophobic Glass Shield', 'Interior Deep Detailing']
-  },
-  {
-    id: 's4',
-    name: 'Air Conditioning Service & Antibacterial Purge',
-    description: 'R134a refrigerant recharge, leak pressure testing, condenser cleaning, and cabin filter replacement.',
-    price: 220000,
-    duration: '2 Hours',
-    features: ['Full Gas Recharge', 'Vacuum Leak Test', 'Compressor Lubricant', 'Cabin Air Sanitization']
-  },
-  {
-    id: 's5',
-    name: 'Brake Pad Replacement & Rotor Resurfacing',
-    description: 'Front and rear premium ceramic brake pad installation and computerized brake disc rotor resurfacing.',
-    price: 320000,
-    duration: '2 Hours',
-    features: ['Ceramic Brake Pads', 'Rotor Lathe Machining', 'Caliper Pin Greasing', 'Brake Line Bleed']
-  },
-  {
-    id: 's6',
-    name: 'Pre-Purchase Vehicle Inspection (TRA Verification)',
-    description: 'Comprehensive 150-point technical, mechanical, chassis integrity, and customs documentation report.',
-    price: 180000,
-    duration: '2 Hours',
-    features: ['Full Mechanical Report', 'Chassis & Structural Inspection', 'Paint Thickness Meter', 'Full TRA Documentation Audit']
-  }
-];
+import { DealershipService } from '../services/dealershipService';
+import { DealershipServiceOffering } from '../types';
 
 export const ServicesPage: React.FC = () => {
+  const [services, setServices] = useState<DealershipServiceOffering[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [selectedService, setSelectedService] = useState<DealershipServiceOffering | null>(null);
 
-  const handleBook = (srv: ServiceItem) => {
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const data = await DealershipService.getServices();
+        setServices(data);
+        if (data.length > 0) setSelectedService(data[0]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadServices();
+  }, []);
+
+  const handleBook = (srv: DealershipServiceOffering) => {
     setSelectedService(srv);
     setIsBookingOpen(true);
   };
@@ -99,7 +56,7 @@ export const ServicesPage: React.FC = () => {
 
         {/* Services Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {SERVICES_DATA.map((srv) => (
+          {services.map((srv) => (
             <div key={srv.id} className="bg-white rounded-2xl p-6 border border-slate-200/90 hover:shadow-lg transition-all flex flex-col justify-between">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -107,17 +64,17 @@ export const ServicesPage: React.FC = () => {
                     <Wrench className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" /> {srv.duration}
+                    <Clock className="w-3.5 h-3.5" /> {srv.duration || '2 Hours'}
                   </span>
                 </div>
 
                 <div>
-                  <h3 className="font-bold text-base text-slate-900">{srv.name}</h3>
+                  <h3 className="font-bold text-base text-slate-900">{srv.service_name}</h3>
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">{srv.description}</p>
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-slate-100">
-                  {srv.features.map((feat, i) => (
+                  {((srv as any).features || ['Certified Multi-Point Inspection', 'Genuine OEM Parts Guarantee', 'Master Technician Diagnostic']).map((feat: string, i: number) => (
                     <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                       <span>{feat}</span>

@@ -14,7 +14,7 @@ export const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const favorites = DealershipService.getFavorites();
+  const favorites = DealershipService.getFavoritesSync();
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Store, Save, CheckCircle2, ShieldCheck, MapPin, Phone,
   Mail, Clock, Image, ExternalLink, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase, sanitizeUuid } from '../../integrations/supabase/client';
 
 export const SellerStoreProfilePage: React.FC = () => {
   const { user } = useAuth();
+  const sellerId = sanitizeUuid(user?.user_id || user?.id) || '8916c8d8-3037-4e54-9ea5-d025cd77e042';
 
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [storeName, setStoreName] = useState('Prime Auto Showroom & Motors');
   const [tagline, setTagline] = useState('Premium Certified Japanese & European Imports in Dar es Salaam');
   const [phone, setPhone] = useState('+255 754 112 233');
@@ -21,10 +24,56 @@ export const SellerStoreProfilePage: React.FC = () => {
   const [bannerUrl, setBannerUrl] = useState('https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=1400&q=80');
   const [logoUrl, setLogoUrl] = useState('https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=200&q=80');
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('seller_profiles')
+          .select('*')
+          .eq('seller_id', sellerId)
+          .single();
+        if (!error && data) {
+          if (data.business_name) setStoreName(data.business_name);
+          if (data.tagline) setTagline(data.tagline);
+          if (data.phone) setPhone(data.phone);
+          if (data.email) setEmail(data.email);
+          if (data.location) setAddress(data.location);
+          if (data.banner_url) setBannerUrl(data.banner_url);
+        }
+      } catch (e) {
+        console.warn('Load seller profile error:', e);
+      }
+    };
+    loadProfile();
+  }, [sellerId]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setLoading(true);
+    try {
+      await supabase.from('seller_profiles').upsert({
+        seller_id: sellerId,
+        business_name: storeName,
+        tagline,
+        phone,
+        email,
+        location: address || city,
+        banner_url: bannerUrl,
+        updated_at: new Date().toISOString()
+      });
+      await supabase.from('profiles').update({
+        phone,
+        city,
+        address,
+        bio
+      }).eq('user_id', sellerId);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to update seller profile in Supabase:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

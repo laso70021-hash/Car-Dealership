@@ -587,6 +587,130 @@ export const DealershipService = {
   },
 
   // =========================================================================
+  // 5.5 SERVICES OFFERED (SELECT, INSERT, UPDATE, DELETE)
+  // =========================================================================
+  async getServices(): Promise<DealershipServiceOffering[]> {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('active_status', true)
+        .order('price', { ascending: true });
+      if (!error && data && data.length > 0) {
+        return data as DealershipServiceOffering[];
+      }
+    } catch (e) {
+      console.warn('Supabase getServices error:', e);
+    }
+    return [
+      {
+        id: 's1',
+        service_name: 'Full Vehicle Diagnostic & Engine Health Check',
+        slug: 'full-vehicle-diagnostic',
+        description: 'Comprehensive computer diagnostic scanning for engine, transmission, ABS, airbag, and ECU sensors.',
+        duration: '1.5 Hours',
+        price: 150000,
+        currency: 'TZS',
+        active_status: true,
+        icon_name: 'Wrench'
+      },
+      {
+        id: 's2',
+        service_name: 'Major Scheduled Service & Fluid Flush',
+        slug: 'major-scheduled-service',
+        description: 'Full synthetic oil change, OEM oil filter, air filter, spark plug inspection, brake fluid, and coolant flush.',
+        duration: '3 Hours',
+        price: 450000,
+        currency: 'TZS',
+        active_status: true,
+        icon_name: 'Wrench'
+      },
+      {
+        id: 's3',
+        service_name: 'Ceramic Coating & Paint Correction',
+        slug: 'ceramic-coating-detailing',
+        description: 'Multi-stage machine paint polish to remove swirl marks, followed by 3-year hydrophobic nano-ceramic sealant.',
+        duration: '1 Day',
+        price: 850000,
+        currency: 'TZS',
+        active_status: true,
+        icon_name: 'Sparkles'
+      },
+      {
+        id: 's4',
+        service_name: 'Air Conditioning Service & Antibacterial Purge',
+        slug: 'ac-service-recharge',
+        description: 'R134a refrigerant recharge, leak pressure testing, condenser cleaning, and cabin filter replacement.',
+        duration: '2 Hours',
+        price: 220000,
+        currency: 'TZS',
+        active_status: true,
+        icon_name: 'Clock'
+      },
+      {
+        id: 's5',
+        service_name: 'Brake Pad Replacement & Rotor Resurfacing',
+        slug: 'brake-system-service',
+        description: 'Front and rear premium ceramic brake pad installation and computerized brake disc rotor resurfacing.',
+        duration: '2 Hours',
+        price: 320000,
+        currency: 'TZS',
+        active_status: true,
+        icon_name: 'ShieldCheck'
+      }
+    ];
+  },
+
+  async createService(srv: Omit<DealershipServiceOffering, 'id'>): Promise<DealershipServiceOffering> {
+    const newId = crypto.randomUUID();
+    const slug = srv.slug || srv.service_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const payload = {
+      id: newId,
+      service_name: srv.service_name,
+      slug,
+      description: srv.description || null,
+      duration: srv.duration || '2 Hours',
+      price: Number(srv.price || 0),
+      currency: srv.currency || 'TZS',
+      active_status: srv.active_status ?? true,
+      icon_name: srv.icon_name || 'Wrench',
+      created_at: new Date().toISOString()
+    };
+    try {
+      const { data, error } = await supabase.from('services').insert([payload]).select().single();
+      if (!error && data) return data as DealershipServiceOffering;
+      if (error) throw new Error(error.message);
+    } catch (err: any) {
+      console.warn('createService error:', err);
+    }
+    return payload as DealershipServiceOffering;
+  },
+
+  async updateService(id: string, updates: Partial<DealershipServiceOffering>): Promise<DealershipServiceOffering | null> {
+    if (isValidUuid(id)) {
+      try {
+        const { data, error } = await supabase.from('services').update(updates).eq('id', id).select().single();
+        if (!error && data) return data as DealershipServiceOffering;
+      } catch (err) {
+        console.warn('updateService error:', err);
+      }
+    }
+    return null;
+  },
+
+  async deleteService(id: string): Promise<boolean> {
+    if (isValidUuid(id)) {
+      try {
+        const { error } = await supabase.from('services').delete().eq('id', id);
+        if (!error) return true;
+      } catch (err) {
+        console.warn('deleteService error:', err);
+      }
+    }
+    return true;
+  },
+
+  // =========================================================================
   // 6. MOTORBIKES (Integrated through vehicle classification system)
   // =========================================================================
   async getMotorbikes(): Promise<Motorbike[]> {
@@ -608,7 +732,7 @@ export const DealershipService = {
           mileage: v.mileage,
           price: v.price,
           currency: v.currency || 'TZS',
-          condition: v.condition === 'New' ? 'New' : 'Used',
+          condition: (v.condition === 'New' ? 'New' : 'Used') as 'New' | 'Used',
           color: v.color || 'Black',
           image_url: v.primary_image || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&q=80',
           availability: v.availability || 'available',
@@ -1029,6 +1153,10 @@ export const DealershipService = {
   // =========================================================================
   // 10. SAVED CARS / FAVORITES
   // =========================================================================
+  getFavoritesSync(): string[] {
+    return [...localFavorites];
+  },
+
   async getFavorites(userId?: string): Promise<string[]> {
     const validUserId = sanitizeUuid(userId) || (await supabase.auth.getSession()).data.session?.user?.id;
     if (validUserId && isValidUuid(validUserId)) {
@@ -1575,5 +1703,72 @@ export const DealershipService = {
       console.warn('Vehicle photo upload failed:', e);
       return URL.createObjectURL(file);
     }
+  },
+
+  // =========================================================================
+  // 18.5 NOTIFICATIONS
+  // =========================================================================
+  async getNotifications(userId?: string): Promise<NotificationItem[]> {
+    const validUserId = sanitizeUuid(userId) || (await supabase.auth.getSession()).data.session?.user?.id;
+    if (validUserId && isValidUuid(validUserId)) {
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', validUserId)
+          .order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          return data as NotificationItem[];
+        }
+      } catch (e) {
+        console.warn('Supabase getNotifications error:', e);
+      }
+    }
+    return [
+      {
+        id: 'notif-1',
+        title: 'New Enquiry Received',
+        message: 'A prospective buyer requested inspection details for 2023 Toyota Land Cruiser.',
+        type: 'info',
+        read: false,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'notif-2',
+        title: 'Test Drive Scheduled',
+        message: 'Test drive confirmed for tomorrow at 10:00 AM at Victoria Plaza Showroom.',
+        type: 'booking',
+        read: false,
+        created_at: new Date(Date.now() - 3600000).toISOString()
+      }
+    ];
+  },
+
+  async markNotificationRead(id: string): Promise<boolean> {
+    if (isValidUuid(id)) {
+      try {
+        await supabase.from('notifications').update({ read: true }).eq('id', id);
+        return true;
+      } catch (e) {
+        console.warn('markNotificationRead error:', e);
+      }
+    }
+    return true;
+  },
+
+  // =========================================================================
+  // 19. REALTIME SYNCHRONIZATION
+  // =========================================================================
+  subscribeToTable(table: string, callback: (payload: any) => void): () => void {
+    const channel = supabase
+      .channel(`rt_${table}_${Math.random().toString(36).substring(2, 7)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
+        callback(payload);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };

@@ -1,32 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MapPin, Plus, Trash2, Edit3, CheckCircle2, Home, Building2,
   X, Check
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase, sanitizeUuid } from '../../integrations/supabase/client';
 
 export const BuyerAddressesPage: React.FC = () => {
-  const [addresses, setAddresses] = useState([
-    {
-      id: 'a1',
-      title: 'Home Residence',
-      street: 'Plot 12, Mwaya Road, Masaki',
-      district: 'Kinondoni',
-      city: 'Dar es Salaam',
-      phone: '+255 765 443 322',
-      isDefault: true,
-      type: 'home'
-    },
-    {
-      id: 'a2',
-      title: 'Office / Business',
-      street: 'Floor 7, Amani Place, Ohio Street',
-      district: 'Ilala',
-      city: 'Dar es Salaam',
-      phone: '+255 22 211 4455',
-      isDefault: false,
-      type: 'office'
+  const { user } = useAuth();
+  const uid = sanitizeUuid(user?.user_id || user?.id) || 'be3c05de-2678-471d-90e7-8010a6bf9010';
+
+  const [addresses, setAddresses] = useState(() => {
+    try {
+      const saved = localStorage.getItem('swahivo_buyer_addresses');
+      return saved ? JSON.parse(saved) : [
+        {
+          id: 'a1',
+          title: 'Home Residence',
+          street: 'Plot 12, Mwaya Road, Masaki',
+          district: 'Kinondoni',
+          city: 'Dar es Salaam',
+          phone: '+255 765 443 322',
+          isDefault: true,
+          type: 'home'
+        },
+        {
+          id: 'a2',
+          title: 'Office / Business',
+          street: 'Floor 7, Amani Place, Ohio Street',
+          district: 'Ilala',
+          city: 'Dar es Salaam',
+          phone: '+255 22 211 4455',
+          isDefault: false,
+          type: 'office'
+        }
+      ];
+    } catch {
+      return [];
     }
-  ]);
+  });
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('Masaki Residence');
@@ -35,13 +47,29 @@ export const BuyerAddressesPage: React.FC = () => {
   const [newCity, setNewCity] = useState('Dar es Salaam');
   const [newPhone, setNewPhone] = useState('+255 765 443 322');
 
+  const saveAddresses = (list: typeof addresses) => {
+    setAddresses(list);
+    try {
+      localStorage.setItem('swahivo_buyer_addresses', JSON.stringify(list));
+      const def = list.find(a => a.isDefault) || list[0];
+      if (def && uid) {
+        supabase.from('profiles').update({
+          address: `${def.street}, ${def.district}, ${def.city}`,
+          city: def.city
+        }).eq('user_id', uid);
+      }
+    } catch {}
+  };
+
   const handleSetDefault = (id: string) => {
-    setAddresses(addresses.map(a => ({ ...a, isDefault: a.id === id })));
+    const updated = addresses.map(a => ({ ...a, isDefault: a.id === id }));
+    saveAddresses(updated);
   };
 
   const handleDelete = (id: string) => {
     if (confirm('Delete this address?')) {
-      setAddresses(addresses.filter(a => a.id !== id));
+      const updated = addresses.filter(a => a.id !== id);
+      saveAddresses(updated);
     }
   };
 
@@ -57,7 +85,8 @@ export const BuyerAddressesPage: React.FC = () => {
       isDefault: addresses.length === 0,
       type: 'home'
     };
-    setAddresses([...addresses, newAddr]);
+    const updated = [...addresses, newAddr];
+    saveAddresses(updated);
     setIsAddOpen(false);
   };
 

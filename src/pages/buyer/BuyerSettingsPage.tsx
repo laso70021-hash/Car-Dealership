@@ -6,13 +6,33 @@ import {
 
 export const BuyerSettingsPage: React.FC = () => {
   const [saved, setSaved] = useState(false);
-  const [notifyPriceDrops, setNotifyPriceDrops] = useState(true);
-  const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
-  const [notifyEmailSummary, setNotifyEmailSummary] = useState(false);
+  const [notifyPriceDrops, setNotifyPriceDrops] = useState(() => {
+    try {
+      const s = localStorage.getItem('swahivo_buyer_pref_pricedrop');
+      return s !== null ? JSON.parse(s) : true;
+    } catch { return true; }
+  });
+  const [notifyWhatsApp, setNotifyWhatsApp] = useState(() => {
+    try {
+      const s = localStorage.getItem('swahivo_buyer_pref_whatsapp');
+      return s !== null ? JSON.parse(s) : true;
+    } catch { return true; }
+  });
+  const [notifyEmailSummary, setNotifyEmailSummary] = useState(() => {
+    try {
+      const s = localStorage.getItem('swahivo_buyer_pref_email');
+      return s !== null ? JSON.parse(s) : false;
+    } catch { return false; }
+  });
   const [currency, setCurrency] = useState('TZS');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      localStorage.setItem('swahivo_buyer_pref_pricedrop', JSON.stringify(notifyPriceDrops));
+      localStorage.setItem('swahivo_buyer_pref_whatsapp', JSON.stringify(notifyWhatsApp));
+      localStorage.setItem('swahivo_buyer_pref_email', JSON.stringify(notifyEmailSummary));
+    } catch {}
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };

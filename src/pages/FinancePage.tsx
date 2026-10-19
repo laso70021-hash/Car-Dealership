@@ -46,7 +46,7 @@ export const FinancePage: React.FC = () => {
         loan_amount: principal,
         loan_term_months: loanTermMonths,
         monthly_payment: Math.round(monthlyPayment),
-        monthly_income: applicantIncome,
+        monthly_income: Number(applicantIncome.replace(/[^0-9.-]+/g, '')) || 0,
         notes: `Down Payment: ${downPaymentPct}%, Term: ${loanTermMonths} months, Rate: ${interestRatePct}%`
       });
 

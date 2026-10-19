@@ -22,6 +22,12 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
 
   useEffect(() => {
     loadData();
+    const unsubOrders = DealershipService.subscribeToTable('orders', () => loadData());
+    const unsubEnquiries = DealershipService.subscribeToTable('enquiries', () => loadData());
+    return () => {
+      unsubOrders();
+      unsubEnquiries();
+    };
   }, []);
 
   const loadData = async () => {
@@ -50,10 +56,14 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEnquiry || !replyText.trim()) return;
-    await DealershipService.updateEnquiryStatus(selectedEnquiry.id, 'Responded');
+    const updated = await DealershipService.replyToEnquiry(
+      selectedEnquiry.id,
+      replyText,
+      'Swahivo Administrator'
+    );
     setEnquiries(
       enquiries.map((enq) =>
-        enq.id === selectedEnquiry.id ? { ...enq, status: 'Responded', last_message_at: 'Just now' } : enq
+        enq.id === selectedEnquiry.id ? updated : enq
       )
     );
     setReplySuccess(true);

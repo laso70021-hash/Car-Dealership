@@ -21,7 +21,8 @@ export const BuyerDashboard: React.FC = () => {
     const load = async () => {
       const data = await DealershipService.getVehicles();
       setVehicles(data);
-      setSavedCarIds(DealershipService.getFavorites());
+      const favs = await DealershipService.getFavorites();
+      setSavedCarIds(favs);
     };
     load();
   }, []);

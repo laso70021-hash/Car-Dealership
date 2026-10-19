@@ -69,7 +69,7 @@ export const SellerDashboard: React.FC = () => {
   const handleCreateListing = async (e: React.FormEvent) => {
     e.preventDefault();
     const created = await DealershipService.createVehicle({
-      seller_id: user?.user_id || 'seller-ali-hassan',
+      seller_id: user?.user_id || user?.id || '8916c8d8-3037-4e54-9ea5-d025cd77e042',
       title,
       slug: title.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
       brand,

@@ -27,16 +27,32 @@ export const AdminCustomersPage: React.FC = () => {
   }, []);
 
   const loadCustomers = async () => {
-    const [orders, enquiries] = await Promise.all([
+    const [orders, enquiries, users] = await Promise.all([
       DealershipService.getOrders(),
-      DealershipService.getEnquiries()
+      DealershipService.getEnquiries(),
+      DealershipService.getUsers()
     ]);
 
     // Aggregate unique customers
     const map = new Map<string, CustomerSummary>();
 
+    users.filter(u => u.role === 'buyer').forEach(u => {
+      const key = (u.email || u.full_name || u.user_id).toLowerCase();
+      map.set(key, {
+        id: u.user_id,
+        name: u.full_name || 'Customer',
+        email: u.email || 'buyer@swahivo.com',
+        phone: u.phone || '+255 777 123456',
+        city: u.city || 'Dar es Salaam',
+        totalOrders: 0,
+        totalEnquiries: 0,
+        totalSpent: 0,
+        joined: u.created_at?.split('T')[0] || '2026-10-18'
+      });
+    });
+
     orders.forEach((o) => {
-      const key = o.email || o.customer_email || o.phone || o.customer_phone || o.customer_name;
+      const key = (o.email || o.customer_email || o.phone || o.customer_phone || o.customer_name).toLowerCase();
       const amt = Number(o.amount || o.total_amount || 0);
       if (!map.has(key)) {
         map.set(key, {
@@ -58,7 +74,7 @@ export const AdminCustomersPage: React.FC = () => {
     });
 
     enquiries.forEach((e) => {
-      const key = e.customer_email || e.customer_name;
+      const key = (e.customer_email || e.customer_name).toLowerCase();
       if (!map.has(key)) {
         map.set(key, {
           id: 'cust_' + Math.random().toString(36).substr(2, 6),
