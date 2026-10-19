@@ -1,0 +1,6 @@
+{
+  "name": "Swahivo Car Dealership",
+  "description": "Premier multi-vendor car dealership in Tanzania featuring verified vehicle listings, buyer & seller portals, flexible financing, and comprehensive dealership management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
