@@ -55,6 +55,11 @@ export const SellerOrdersBookingsPage: React.FC = () => {
     setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
   };
 
+  const handleUpdateFulfillmentStatus = async (id: string, fulfillment: Order['fulfillment_status']) => {
+    await DealershipService.updateOrderFulfillment(id, fulfillment);
+    setOrders(orders.map(o => o.id === id ? { ...o, fulfillment_status: fulfillment } : o));
+  };
+
   const handleUpdateBookingStatus = async (id: string, status: Booking['status']) => {
     await DealershipService.updateBookingStatus(id, status);
     setBookings(bookings.map(b => b.id === id ? { ...b, status } : b));
@@ -128,8 +133,9 @@ export const SellerOrdersBookingsPage: React.FC = () => {
                   <th className="py-3.5 px-4">Customer</th>
                   <th className="py-3.5 px-4">Item Details</th>
                   <th className="py-3.5 px-4">Amount</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4 text-right">Update Status</th>
+                  <th className="py-3.5 px-4">Order Status</th>
+                  <th className="py-3.5 px-4">Fulfillment Status</th>
+                  <th className="py-3.5 px-4 text-right">Quick Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -150,33 +156,60 @@ export const SellerOrdersBookingsPage: React.FC = () => {
                       TZS {(o.total_amount || o.amount || 0).toLocaleString()}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        String(o.status).toLowerCase() === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : String(o.status).toLowerCase() === 'confirmed'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-amber-50 text-amber-700'
-                      }`}>
-                        {String(o.status).toUpperCase()}
-                      </span>
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value as any)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-xl outline-none border ${
+                          String(o.status).toLowerCase() === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : String(o.status).toLowerCase() === 'confirmed'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </td>
+                    <td className="py-3 px-4">
+                      <select
+                        value={o.fulfillment_status || (String(o.status).toLowerCase() === 'completed' ? 'Delivered' : 'Pending')}
+                        onChange={(e) => handleUpdateFulfillmentStatus(o.id, e.target.value as any)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-xl outline-none border ${
+                          o.fulfillment_status === 'Delivered'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : o.fulfillment_status === 'Dispatched'
+                            ? 'bg-purple-50 text-purple-800 border-purple-300'
+                            : o.fulfillment_status === 'Ready for Pickup'
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                            : o.fulfillment_status === 'Processing'
+                            ? 'bg-blue-50 text-blue-800 border-blue-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Ready for Pickup">Ready for Pickup</option>
+                        <option value="Dispatched">Dispatched</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1">
+                      {o.fulfillment_status !== 'Delivered' ? (
                         <button
-                          onClick={() => handleUpdateOrderStatus(o.id, 'Confirmed')}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-bold"
-                          title="Confirm Order"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => handleUpdateOrderStatus(o.id, 'Completed')}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg text-xs font-bold"
+                          onClick={() => handleUpdateFulfillmentStatus(o.id, 'Delivered')}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition"
                           title="Mark Delivered"
                         >
                           Deliver
                         </button>
-                      </div>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-600">Fulfilled</span>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -42,7 +42,14 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
   const handleUpdateOrderStatus = async (id: string, newStatus: Order['status']) => {
     const updated = await DealershipService.updateOrderStatus(id, newStatus);
     if (updated) {
-      setOrders(orders.map((o) => (o.id === id ? updated : o)));
+      setOrders(orders.map((o) => (o.id === id ? { ...o, status: newStatus } : o)));
+    }
+  };
+
+  const handleUpdateFulfillmentStatus = async (id: string, fulfillment: Order['fulfillment_status']) => {
+    const updated = await DealershipService.updateOrderFulfillment(id, fulfillment);
+    if (updated) {
+      setOrders(orders.map((o) => (o.id === id ? { ...o, fulfillment_status: fulfillment } : o)));
     }
   };
 
@@ -146,12 +153,14 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
                   <th className="py-3.5 px-6">Product / Vehicle</th>
                   <th className="py-3.5 px-6">Amount (TZS)</th>
                   <th className="py-3.5 px-6">Payment</th>
+                  <th className="py-3.5 px-6">Order Status</th>
                   <th className="py-3.5 px-6">Fulfillment Status</th>
+                  <th className="py-3.5 px-6 text-right">Quick Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-slate-50/60 transition-colors">
+                {filteredOrders.map((ord, idx) => (
+                  <tr key={`${ord.id}-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-6 font-mono font-bold text-slate-900">
                       {ord.order_number}
                     </td>
@@ -171,7 +180,7 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
                           ? 'bg-emerald-50 text-emerald-700'
                           : 'bg-amber-50 text-amber-700'
                       }`}>
-                        {ord.payment_status}
+                        {ord.payment_status || 'verified'}
                       </span>
                     </td>
                     <td className="py-3.5 px-6">
@@ -194,6 +203,45 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
                         <option value="Completed">Completed</option>
                         <option value="Cancelled">Cancelled</option>
                       </select>
+                    </td>
+                    <td className="py-3.5 px-6">
+                      <select
+                        value={ord.fulfillment_status || (ord.status === 'Completed' ? 'Delivered' : 'Pending')}
+                        onChange={(e) => handleUpdateFulfillmentStatus(ord.id, e.target.value as any)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-xl outline-none border ${
+                          ord.fulfillment_status === 'Delivered'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : ord.fulfillment_status === 'Dispatched'
+                            ? 'bg-purple-50 text-purple-800 border-purple-300'
+                            : ord.fulfillment_status === 'Ready for Pickup'
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                            : ord.fulfillment_status === 'Processing'
+                            ? 'bg-blue-50 text-blue-800 border-blue-300'
+                            : ord.fulfillment_status === 'Cancelled'
+                            ? 'bg-red-50 text-red-800 border-red-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Ready for Pickup">Ready for Pickup</option>
+                        <option value="Dispatched">Dispatched / En Route</option>
+                        <option value="Delivered">Delivered / Handed Over</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      {ord.fulfillment_status !== 'Delivered' ? (
+                        <button
+                          onClick={() => handleUpdateFulfillmentStatus(ord.id, 'Delivered')}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition"
+                          title="Mark Order as Delivered"
+                        >
+                          Mark Delivered
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-600">Complete</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -219,8 +267,8 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredEnquiries.map((enq) => (
-                  <tr key={enq.id} className="hover:bg-slate-50/60 transition-colors">
+                {filteredEnquiries.map((enq, idx) => (
+                  <tr key={`${enq.id}-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-6">
                       <p className="font-bold text-slate-900">{enq.customer_name}</p>
                       <p className="text-[10px] text-slate-400">{enq.customer_email}</p>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Tag, Plus, Edit3, Trash2, CheckCircle2, XCircle, X, Search, Globe } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { Brand } from '../../types';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const AdminBrandsPage: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -19,7 +20,14 @@ export const AdminBrandsPage: React.FC = () => {
 
   const loadBrands = async () => {
     const list = await DealershipService.getBrands();
-    setBrands(list);
+    const seen = new Set<string>();
+    const unique = list.filter((b, idx) => {
+      const id = b.id || `br_${idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    setBrands(unique);
   };
 
   const filteredBrands = brands.filter((b) =>
@@ -36,7 +44,7 @@ export const AdminBrandsPage: React.FC = () => {
       logo_url: formLogo || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=100&q=80',
       vehicle_count: 0
     });
-    setBrands([...brands, created]);
+    setBrands((prev) => [...prev.filter((b) => b.id !== created.id), created]);
     setIsAddOpen(false);
     resetForm();
   };
@@ -106,9 +114,9 @@ export const AdminBrandsPage: React.FC = () => {
 
       {/* Brand Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {filteredBrands.map((brand) => (
+        {filteredBrands.map((brand, idx) => (
           <div
-            key={brand.id}
+            key={`${brand.id}-${idx}`}
             className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all"
           >
             <div className="flex items-center gap-3">
@@ -191,16 +199,14 @@ export const AdminBrandsPage: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Logo URL</label>
-                <input
-                  type="text"
-                  value={formLogo}
-                  onChange={(e) => setFormLogo(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                />
-              </div>
+              <ImageUploadInput
+                label="Brand Logo"
+                value={formLogo}
+                onChange={setFormLogo}
+                aspectRatio="square"
+                placeholder="https://..."
+                helperText="Upload official emblem or brand logo (SVG, PNG, or JPG)"
+              />
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

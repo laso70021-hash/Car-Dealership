@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bike, Plus, Edit3, Trash2, Search, CheckCircle2, Clock, MapPin, X } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { Motorbike } from '../../types';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const AdminMotorbikesPage: React.FC = () => {
   const [motorbikes, setMotorbikes] = useState<Motorbike[]>([]);
@@ -27,7 +28,14 @@ export const AdminMotorbikesPage: React.FC = () => {
 
   const loadMotorbikes = async () => {
     const list = await DealershipService.getMotorbikes();
-    setMotorbikes(list);
+    const seen = new Set<string>();
+    const unique = list.filter((m, idx) => {
+      const id = m.id || `mb_${idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    setMotorbikes(unique);
   };
 
   const filtered = motorbikes.filter((m) =>
@@ -53,7 +61,7 @@ export const AdminMotorbikesPage: React.FC = () => {
       availability: 'available',
       location: formLocation
     });
-    setMotorbikes([created, ...motorbikes]);
+    setMotorbikes((prev) => [created, ...prev.filter((m) => m.id !== created.id)]);
     setIsAddOpen(false);
     resetForm();
   };
@@ -155,9 +163,9 @@ export const AdminMotorbikesPage: React.FC = () => {
 
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((bike) => (
+        {filtered.map((bike, idx) => (
           <div
-            key={bike.id}
+            key={`${bike.id}-${idx}`}
             className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col group hover:shadow-md transition-all"
           >
             <div className="h-48 w-full relative overflow-hidden bg-slate-100">
@@ -341,16 +349,13 @@ export const AdminMotorbikesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Image URL</label>
-                <input
-                  type="text"
-                  value={formImage}
-                  onChange={(e) => setFormImage(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                />
-              </div>
+              <ImageUploadInput
+                label="Motorbike Photo"
+                value={formImage}
+                onChange={setFormImage}
+                placeholder="https://images.unsplash.com/..."
+                helperText="Upload clear side-profile or showroom photo of the motorbike"
+              />
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

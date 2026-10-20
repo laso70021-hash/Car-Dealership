@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Car, Plus, Layers, MessageSquare, ShoppingBag,
-  Users, Store, Zap, DollarSign, Star, BarChart3, Wallet, Settings,
+  Users, UserCheck, Store, Zap, DollarSign, Star, BarChart3, Wallet, Settings,
   ExternalLink, Menu, X, Bell, ChevronDown, CheckCircle2, ShieldCheck
 } from 'lucide-react';
 import { SwahivoLogo } from '../components/common/SwahivoLogo';

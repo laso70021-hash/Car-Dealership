@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { useAuth } from '../../contexts/AuthContext';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const SellerAddVehiclePage: React.FC = () => {
   const navigate = useNavigate();
@@ -351,26 +352,14 @@ export const SellerAddVehiclePage: React.FC = () => {
           </h2>
 
           <div className="space-y-4 text-xs">
-            <div>
-              <label className="block text-slate-700 font-bold mb-1.5">Primary Vehicle Image URL *</label>
-              <input
-                type="url"
-                required
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
-              />
-              {imageUrl && (
-                <div className="mt-2.5">
-                  <span className="text-[10px] text-slate-400 block mb-1">Image Preview:</span>
-                  <img
-                    src={imageUrl}
-                    alt="Preview"
-                    className="w-48 h-32 object-cover rounded-xl border border-slate-200 shadow-sm"
-                  />
-                </div>
-              )}
-            </div>
+            <ImageUploadInput
+              label="Primary Vehicle Photo"
+              required
+              value={imageUrl}
+              onChange={setImageUrl}
+              placeholder="https://images.unsplash.com/..."
+              helperText="Upload high quality exterior photo of your vehicle (clear daylight angle recommended)"
+            />
 
             <div>
               <label className="block text-slate-700 font-bold mb-1.5">Features & Options</label>

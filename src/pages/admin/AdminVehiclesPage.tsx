@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { Vehicle } from '../../types';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const AdminVehiclesPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -34,7 +35,14 @@ export const AdminVehiclesPage: React.FC = () => {
 
   const loadVehicles = async () => {
     const list = await DealershipService.getVehicles();
-    setVehicles(list);
+    const seen = new Set<string>();
+    const unique = list.filter((v, idx) => {
+      const id = v.id || `veh_${idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    setVehicles(unique);
   };
 
   const filteredVehicles = vehicles.filter((v) => {
@@ -74,7 +82,7 @@ export const AdminVehiclesPage: React.FC = () => {
       publication_status: 'approved',
       primary_image: formImage
     });
-    setVehicles([newV, ...vehicles]);
+    setVehicles((prev) => [newV, ...prev.filter((v) => v.id !== newV.id)]);
     setIsAddOpen(false);
     resetForm();
   };
@@ -263,10 +271,10 @@ export const AdminVehiclesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredVehicles.map((vehicle) => {
+              {filteredVehicles.map((vehicle, idx) => {
                 const isApproved = vehicle.publication_status === 'approved' || vehicle.publication_status === 'active';
                 return (
-                  <tr key={vehicle.id} className="hover:bg-slate-50/60 transition-colors">
+                  <tr key={`${vehicle.id}-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-6">
                       <button
                         onClick={() => handleToggleFeatured(vehicle)}
@@ -490,26 +498,23 @@ export const AdminVehiclesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Location</label>
-                  <input
-                    type="text"
-                    value={formLocation}
-                    onChange={(e) => setFormLocation(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Image URL</label>
-                  <input
-                    type="text"
-                    value={formImage}
-                    onChange={(e) => setFormImage(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Location / City</label>
+                <input
+                  type="text"
+                  value={formLocation}
+                  onChange={(e) => setFormLocation(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
+                />
               </div>
+
+              <ImageUploadInput
+                label="Primary Vehicle Photo"
+                value={formImage}
+                onChange={setFormImage}
+                placeholder="https://images.unsplash.com/..."
+                helperText="Upload exterior showroom photo of the vehicle"
+              />
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

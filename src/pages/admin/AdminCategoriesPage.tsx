@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layers, Plus, Edit3, Trash2, ArrowUpDown, X, Check, Eye } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { Category } from '../../types';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const AdminCategoriesPage: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -20,7 +21,14 @@ export const AdminCategoriesPage: React.FC = () => {
 
   const loadCategories = async () => {
     const list = await DealershipService.getCategories();
-    setCategories(list);
+    const seen = new Set<string>();
+    const unique = list.filter((c, idx) => {
+      const id = c.id || `cat_${idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    setCategories(unique);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -34,7 +42,7 @@ export const AdminCategoriesPage: React.FC = () => {
       display_order: Number(formOrder),
       is_active: true
     });
-    setCategories([...categories, created]);
+    setCategories((prev) => [...prev.filter((c) => c.id !== created.id), created]);
     setIsAddOpen(false);
     resetForm();
   };
@@ -103,9 +111,9 @@ export const AdminCategoriesPage: React.FC = () => {
 
       {/* Categories Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {categories.map((cat) => (
+        {categories.map((cat, idx) => (
           <div
-            key={cat.id}
+            key={`${cat.id}-${idx}`}
             className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col group hover:shadow-md transition-all"
           >
             <div className="h-40 w-full relative overflow-hidden bg-slate-100">
@@ -206,27 +214,23 @@ export const AdminCategoriesPage: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Display Order</label>
-                  <input
-                    type="number"
-                    value={formOrder}
-                    onChange={(e) => setFormOrder(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Image URL</label>
-                  <input
-                    type="text"
-                    value={formImage}
-                    onChange={(e) => setFormImage(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Display Order</label>
+                <input
+                  type="number"
+                  value={formOrder}
+                  onChange={(e) => setFormOrder(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
+                />
               </div>
+
+              <ImageUploadInput
+                label="Category Banner / Photo"
+                value={formImage}
+                onChange={setFormImage}
+                placeholder="https://images.unsplash.com/..."
+                helperText="Upload category cover photo for marketplace cards"
+              />
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

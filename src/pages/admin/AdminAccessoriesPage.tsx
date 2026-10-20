@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Wrench, Plus, Edit3, Trash2, Search, CheckCircle2, AlertTriangle, X, ShoppingBag } from 'lucide-react';
 import { DealershipService } from '../../services/dealershipService';
 import { Accessory } from '../../types';
+import { ImageUploadInput } from '../../components/common/ImageUploadInput';
 
 export const AdminAccessoriesPage: React.FC = () => {
   const [accessories, setAccessories] = useState<Accessory[]>([]);
@@ -24,7 +25,14 @@ export const AdminAccessoriesPage: React.FC = () => {
 
   const loadAccessories = async () => {
     const list = await DealershipService.getAccessories();
-    setAccessories(list);
+    const seen = new Set<string>();
+    const unique = list.filter((item, idx) => {
+      const id = item.id || `acc_${idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    setAccessories(unique);
   };
 
   const filtered = accessories.filter((a) =>
@@ -48,7 +56,7 @@ export const AdminAccessoriesPage: React.FC = () => {
       images: [formImage || 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&q=80'],
       status: Number(formStock) > 0 ? 'active' : 'out_of_stock'
     });
-    setAccessories([created, ...accessories]);
+    setAccessories((prev) => [created, ...prev.filter((a) => a.id !== created.id)]);
     setIsAddOpen(false);
     resetForm();
   };
@@ -147,8 +155,8 @@ export const AdminAccessoriesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+              {filtered.map((item, index) => (
+                <tr key={`${item.id}-${index}`} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-3.5 px-6">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden flex-shrink-0">
@@ -301,16 +309,14 @@ export const AdminAccessoriesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Image URL</label>
-                <input
-                  type="text"
-                  value={formImage}
-                  onChange={(e) => setFormImage(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-[#ef172b]"
-                />
-              </div>
+              <ImageUploadInput
+                label="Product Photo"
+                value={formImage}
+                onChange={setFormImage}
+                aspectRatio="square"
+                placeholder="https://images.unsplash.com/..."
+                helperText="Upload clear image of the accessory, parts, or packaging"
+              />
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button

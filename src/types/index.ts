@@ -148,6 +148,8 @@ export interface Order {
   currency?: string;
   notes?: string | null;
   status: 'Pending' | 'Processing' | 'Confirmed' | 'Completed' | 'Cancelled' | 'pending' | 'processing' | 'confirmed' | 'completed' | 'cancelled';
+  fulfillment_status?: 'Pending' | 'Processing' | 'Ready for Pickup' | 'Dispatched' | 'Delivered' | 'Cancelled';
+  tracking_number?: string;
   payment_status?: 'unpaid' | 'pending_verification' | 'paid' | 'refunded';
   items?: Array<{ name: string; quantity: number; price?: number }>;
   shipping_address?: { street?: string; city?: string; district?: string };
@@ -171,6 +173,7 @@ export interface Enquiry {
   replied_at?: string | null;
   replied_by?: string | null;
   status: 'New' | 'Contacted' | 'Pending' | 'Responded' | 'Closed' | 'pending' | 'in_progress' | 'closed';
+  fulfillment_status?: 'Pending' | 'Contacted' | 'Scheduled' | 'Fulfilled' | 'Cancelled';
   last_message_at?: string;
   created_at?: string;
 }
@@ -199,14 +202,21 @@ export interface Booking {
 
 export interface CustomerReview {
   id: string;
+  seller_id?: string | null;
+  seller_name?: string | null;
+  vehicle_id?: string | null;
+  customer_id?: string | null;
   customer_name: string;
   user_name?: string;
   customer_city: string;
   customer_avatar?: string;
   rating: number;
+  category?: string;
   comment: string;
   verified_buyer?: boolean;
   status: 'approved' | 'pending' | 'rejected';
+  reply?: string | null;
+  reply_at?: string | null;
   created_at?: string;
 }
 
