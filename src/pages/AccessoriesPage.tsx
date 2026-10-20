@@ -103,7 +103,7 @@ export const AccessoriesPage: React.FC = () => {
               <div>
                 <div className="aspect-[4/3] bg-slate-100 overflow-hidden relative">
                   <img
-                    src={item.image}
+                    src={item.image || (item.images && item.images[0]) || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&q=80'}
                     alt={item.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
@@ -126,7 +126,7 @@ export const AccessoriesPage: React.FC = () => {
 
               <div className="p-5 pt-0">
                 <button
-                  onClick={() => handleOrder(item.id)}
+                  onClick={() => handleOrder(item)}
                   className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                     orderedId === item.id
                       ? 'bg-emerald-600 text-white'

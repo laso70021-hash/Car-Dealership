@@ -59,7 +59,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         status: 'Confirmed'
       });
 
-      setBookingRef(res.booking_number);
+      setBookingRef(res.booking_number || res.id);
       setIsSuccess(true);
       if (onSuccess) onSuccess();
 

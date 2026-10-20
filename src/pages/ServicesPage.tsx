@@ -44,7 +44,7 @@ export const ServicesPage: React.FC = () => {
 
           <button
             onClick={() => {
-              setSelectedService(SERVICES_DATA[0]);
+              if (services.length > 0) setSelectedService(services[0]);
               setIsBookingOpen(true);
             }}
             className="px-6 py-3.5 bg-[#ef172b] hover:bg-[#d01122] text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-red-500/20 self-start md:self-auto"

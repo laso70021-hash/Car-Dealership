@@ -2,310 +2,329 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, ADMIN_UID } from '../integrations/supabase/client';
 import { UserProfile, UserRole } from '../types';
 
-interface AuthContextType {
-  user: UserProfile | null;
+export interface VerifiedCredentials {
+  email: string;
+  name: string;
   role: UserRole;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  signIn: (email: string, role?: UserRole, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, role: UserRole, fullName: string) => Promise<{ success: boolean; error?: string }>;
-  signOut: () => Promise<void>;
-  switchRole: (role: UserRole) => Promise<void>;
-  updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  password?: string;
 }
 
-export const DEMO_CREDENTIALS: Record<UserRole, { email: string; password: string; name: string; phone: string; city: string }> = {
+export const VERIFIED_ACCOUNTS: Record<UserRole, { email: string; password: string; name: string; role: UserRole }> = {
   admin: {
     email: 'admin@swahivo.com',
     password: 'AdminPassword2026!',
     name: 'Swahivo Administrator',
-    phone: '+255 770 565656',
-    city: 'Dar es Salaam'
+    role: 'admin'
   },
   seller: {
     email: 'seller@swahivo.com',
     password: 'SellerPassword2026!',
     name: 'Ali Hassan (Prime Motors)',
-    phone: '+255 777 998877',
-    city: 'Dar es Salaam'
+    role: 'seller'
   },
   buyer: {
     email: 'buyer@swahivo.com',
     password: 'BuyerPassword2026!',
     name: 'Salim Khamis',
-    phone: '+255 777 123456',
-    city: 'Dar es Salaam'
+    role: 'buyer'
   }
 };
+
+interface AuthContextType {
+  user: UserProfile | null;
+  role: UserRole;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
+  signUp: (
+    email: string,
+    password: string,
+    role: UserRole,
+    fullName: string,
+    metadata?: { phone?: string; city?: string; businessName?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
+  signOut: () => Promise<void>;
+  switchRole: (role: UserRole) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  refreshProfile: () => Promise<UserProfile | null>;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('swahivo_active_user');
-    if (saved) {
-      try { return JSON.parse(saved); } catch {}
-    }
-    return null;
-  });
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Helper to load or create profile for a Supabase user
-  const syncUserProfile = async (sessionUser: any): Promise<UserProfile> => {
+  // Securely query profile from public.profiles table based on auth.uid()
+  const fetchDatabaseProfile = async (sessionUser: any): Promise<UserProfile> => {
+    if (!sessionUser?.id) throw new Error('No authenticated user session');
+
     try {
-      const { data: profileData } = await supabase
+      const { data: dbProfile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', sessionUser.id)
         .maybeSingle();
 
-      if (profileData) {
-        const up: UserProfile = {
-          user_id: profileData.user_id,
-          id: profileData.user_id,
-          role: profileData.role as UserRole,
-          full_name: profileData.full_name || 'User',
-          name: profileData.full_name || 'User',
-          email: profileData.email || sessionUser.email,
-          phone: profileData.phone || null,
-          avatar_url: profileData.avatar_url || null,
-          city: profileData.city || 'Dar es Salaam',
-          address: profileData.address || null,
-          bio: profileData.bio || null,
-          is_verified: profileData.is_verified ?? true
+      if (dbProfile) {
+        const profile: UserProfile = {
+          user_id: dbProfile.user_id,
+          id: dbProfile.user_id,
+          role: dbProfile.role as UserRole,
+          full_name: dbProfile.full_name || sessionUser.user_metadata?.full_name || 'User',
+          name: dbProfile.full_name || sessionUser.user_metadata?.full_name || 'User',
+          email: dbProfile.email || sessionUser.email,
+          phone: dbProfile.phone || null,
+          avatar_url: dbProfile.avatar_url || null,
+          city: dbProfile.city || 'Dar es Salaam',
+          address: dbProfile.address || null,
+          bio: dbProfile.bio || null,
+          is_verified: dbProfile.is_verified ?? true
         };
-        setUser(up);
-        localStorage.setItem('swahivo_active_user', JSON.stringify(up));
-        return up;
+        setUser(profile);
+        return profile;
       }
 
-      // If no profile found in database, insert one
-      const roleFromMeta = (sessionUser.user_metadata?.role || (sessionUser.id === ADMIN_UID ? 'admin' : 'buyer')) as UserRole;
-      const fullNameFromMeta = sessionUser.user_metadata?.full_name || (roleFromMeta === 'admin' ? 'Swahivo Administrator' : 'User');
+      // If no profile exists yet in the profiles table, insert one securely
+      const assignedRole: UserRole =
+        (sessionUser.user_metadata?.role as UserRole) ||
+        (sessionUser.id === ADMIN_UID ? 'admin' : 'buyer');
+      const fullName = sessionUser.user_metadata?.full_name || 'User';
 
-      const newProfile = {
+      const newRecord = {
         user_id: sessionUser.id,
-        role: roleFromMeta,
-        full_name: fullNameFromMeta,
+        role: assignedRole,
+        full_name: fullName,
         email: sessionUser.email,
-        is_verified: true
+        is_verified: true,
+        city: 'Dar es Salaam'
       };
 
-      await supabase.from('profiles').insert([newProfile]);
+      const { data: inserted, error: insertErr } = await supabase
+        .from('profiles')
+        .insert([newRecord])
+        .select()
+        .single();
 
-      const up: UserProfile = {
+      const profile: UserProfile = {
         user_id: sessionUser.id,
         id: sessionUser.id,
-        role: roleFromMeta,
-        full_name: fullNameFromMeta,
-        name: fullNameFromMeta,
+        role: (inserted?.role || assignedRole) as UserRole,
+        full_name: inserted?.full_name || fullName,
+        name: inserted?.full_name || fullName,
         email: sessionUser.email,
         city: 'Dar es Salaam',
         is_verified: true
       };
-      setUser(up);
-      localStorage.setItem('swahivo_active_user', JSON.stringify(up));
-      return up;
-    } catch (e) {
-      console.warn('syncUserProfile warning:', e);
-      const fallback: UserProfile = {
+      setUser(profile);
+      return profile;
+    } catch (err) {
+      console.error('Error fetching database-derived profile:', err);
+      // Fallback to authenticated session object
+      const fallbackProfile: UserProfile = {
         user_id: sessionUser.id,
         id: sessionUser.id,
-        role: (sessionUser.user_metadata?.role || 'admin') as UserRole,
-        full_name: sessionUser.user_metadata?.full_name || 'User',
-        name: sessionUser.user_metadata?.full_name || 'User',
+        role: (sessionUser.user_metadata?.role || (sessionUser.id === ADMIN_UID ? 'admin' : 'buyer')) as UserRole,
+        full_name: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0] || 'User',
+        name: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0] || 'User',
         email: sessionUser.email,
         is_verified: true
       };
-      setUser(fallback);
-      return fallback;
+      setUser(fallbackProfile);
+      return fallbackProfile;
     }
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    const initAuth = async () => {
+    const restoreSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
         if (session?.user && isMounted) {
-          await syncUserProfile(session.user);
+          await fetchDatabaseProfile(session.user);
         } else if (isMounted) {
-          // If no session exists, log in with default admin credentials so client is fully authenticated
-          const adminDemo = DEMO_CREDENTIALS.admin;
-          const { data: loginData } = await supabase.auth.signInWithPassword({
-            email: adminDemo.email,
-            password: adminDemo.password
-          });
-          if (loginData?.user && isMounted) {
-            await syncUserProfile(loginData.user);
-          }
+          setUser(null);
         }
       } catch (err) {
-        console.warn('Initial Supabase auth setup error:', err);
+        console.warn('Session restoration note:', err);
+        if (isMounted) setUser(null);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     };
 
-    initAuth();
+    restoreSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Listen to real Supabase auth state change events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        await syncUserProfile(session.user);
+        await fetchDatabaseProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        localStorage.removeItem('swahivo_active_user');
       }
+      setIsLoading(false);
     });
 
     return () => {
       isMounted = false;
-      authListener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
-  const switchRole = async (newRole: UserRole) => {
-    setIsLoading(true);
-    try {
-      const demo = DEMO_CREDENTIALS[newRole];
-      if (demo) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: demo.email,
-          password: demo.password
-        });
-        if (!error && data?.user) {
-          await syncUserProfile(data.user);
-        }
-      }
-    } catch (err) {
-      console.warn('switchRole error:', err);
-    } finally {
-      setIsLoading(false);
+  const refreshProfile = async (): Promise<UserProfile | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      return await fetchDatabaseProfile(session.user);
     }
+    return null;
   };
 
-  const signIn = async (email: string, chosenRole: UserRole = 'buyer', password?: string) => {
+  const signIn = async (
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
     setIsLoading(true);
     try {
-      // Determine password (custom or demo)
-      let targetPassword = password;
-      if (!targetPassword && DEMO_CREDENTIALS[chosenRole]?.email === email) {
-        targetPassword = DEMO_CREDENTIALS[chosenRole].password;
+      if (!email || !password) {
+        return { success: false, error: 'Both email and password are required.' };
       }
 
-      if (targetPassword) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: targetPassword });
-        if (error) {
-          return { success: false, error: error.message };
-        }
-        if (data.user) {
-          await syncUserProfile(data.user);
-          return { success: true };
-        }
-      }
-
-      // Try signing in with chosen role's demo account
-      const demo = DEMO_CREDENTIALS[chosenRole];
-      if (demo) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: demo.email,
-          password: demo.password
-        });
-        if (error) return { success: false, error: error.message };
-        if (data.user) {
-          await syncUserProfile(data.user);
-          return { success: true };
-        }
-      }
-
-      return { success: false, error: 'Password is required' };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signUp = async (email: string, password: string, role: UserRole, fullName: string) => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { role, full_name: fullName }
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
       });
+
       if (error) {
         return { success: false, error: error.message };
       }
-      if (data.user) {
-        // Insert corresponding profile in public.profiles table
-        try {
-          await supabase.from('profiles').insert([{
-            user_id: data.user.id,
-            role,
-            full_name: fullName,
-            email,
-            is_verified: true
-          }]);
 
-          if (role === 'seller') {
-            await supabase.from('seller_profiles').insert([{
-              seller_id: data.user.id,
-              business_name: fullName + ' Dealership',
-              email
-            }]);
-          }
-        } catch (dbErr) {
-          console.warn('Profile creation after signup:', dbErr);
-        }
-
-        await syncUserProfile(data.user);
-        return { success: true };
+      if (data?.user) {
+        const profile = await fetchDatabaseProfile(data.user);
+        return { success: true, role: profile.role };
       }
-      return { success: true };
+
+      return { success: false, error: 'Authentication failed. Please verify credentials.' };
     } catch (err: any) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || 'An unexpected error occurred during sign in.' };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const signOut = async () => {
+  const signUp = async (
+    email: string,
+    password: string,
+    role: UserRole,
+    fullName: string,
+    metadata?: { phone?: string; city?: string; businessName?: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
     try {
-      await supabase.auth.signOut();
-    } catch {}
-    setUser(null);
-    localStorage.removeItem('swahivo_active_user');
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            role,
+            full_name: fullName,
+            phone: metadata?.phone || null,
+            city: metadata?.city || 'Dar es Salaam'
+          }
+        }
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data?.user) {
+        // Create user record in public.profiles table
+        const profilePayload = {
+          user_id: data.user.id,
+          role,
+          full_name: fullName,
+          email: email.trim(),
+          phone: metadata?.phone || null,
+          city: metadata?.city || 'Dar es Salaam',
+          is_verified: role === 'buyer'
+        };
+
+        const { error: profileErr } = await supabase.from('profiles').insert([profilePayload]);
+        if (profileErr) {
+          console.warn('Profile record insert warning:', profileErr);
+        }
+
+        // If registered as seller, create record in seller_profiles
+        if (role === 'seller') {
+          const sellerPayload = {
+            seller_id: data.user.id,
+            business_name: metadata?.businessName || `${fullName} Dealership`,
+            email: email.trim(),
+            phone: metadata?.phone || null,
+            location: metadata?.city || 'Dar es Salaam, Tanzania',
+            verified_badge: false
+          };
+          await supabase.from('seller_profiles').insert([sellerPayload]);
+        }
+
+        await fetchDatabaseProfile(data.user);
+        return { success: true };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Signup failed' };
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!user) return;
-    const updated = { ...user, ...updates };
-    setUser(updated);
-    localStorage.setItem('swahivo_active_user', JSON.stringify(updated));
-
-    if (user.user_id && user.user_id.length > 20) {
-      try {
-        const { error } = await supabase.from('profiles').update({
-          full_name: updated.full_name || updated.name,
-          phone: updated.phone,
-          city: updated.city,
-          address: updated.address,
-          avatar_url: updated.avatar_url,
-          bio: updated.bio,
-          updated_at: new Date().toISOString()
-        }).eq('user_id', user.user_id);
-
-        if (error) {
-          console.warn('Update profile in Supabase warning:', error.message);
-        }
-      } catch (err) {
-        console.warn('Update profile in Supabase error:', err);
-      }
+  const signOut = async (): Promise<void> => {
+    setIsLoading(true);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('SignOut note:', err);
+    } finally {
+      setUser(null);
+      setIsLoading(false);
     }
+  };
+
+  // Switch role by authenticating with the verified account for that role in Supabase
+  const switchRole = async (targetRole: UserRole): Promise<{ success: boolean; error?: string }> => {
+    const creds = VERIFIED_ACCOUNTS[targetRole];
+    if (!creds) return { success: false, error: 'Unknown role' };
+
+    return await signIn(creds.email, creds.password);
+  };
+
+  const updateProfile = async (updates: Partial<UserProfile>): Promise<void> => {
+    if (!user?.user_id) throw new Error('User not authenticated');
+
+    const updatePayload: any = {
+      updated_at: new Date().toISOString()
+    };
+    if (updates.full_name !== undefined) updatePayload.full_name = updates.full_name;
+    if (updates.phone !== undefined) updatePayload.phone = updates.phone;
+    if (updates.avatar_url !== undefined) updatePayload.avatar_url = updates.avatar_url;
+    if (updates.city !== undefined) updatePayload.city = updates.city;
+    if (updates.address !== undefined) updatePayload.address = updates.address;
+    if (updates.bio !== undefined) updatePayload.bio = updates.bio;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updatePayload)
+      .eq('user_id', user.user_id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    setUser(prev => prev ? { ...prev, ...updates } : null);
   };
 
   return (
@@ -320,6 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut,
         switchRole,
         updateProfile,
+        refreshProfile,
       }}
     >
       {children}

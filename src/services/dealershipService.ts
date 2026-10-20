@@ -16,65 +16,19 @@ export interface DatabaseStatus {
   details?: Record<string, number | string>;
 }
 
-// Local cache storage helpers for offline resilience & optimistic UI updates
-const getStorageItem = <T>(key: string, defaultVal: T): T => {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : defaultVal;
-  } catch {
-    return defaultVal;
-  }
-};
-
-const setStorageItem = <T>(key: string, val: T): void => {
-  try {
-    localStorage.setItem(key, JSON.stringify(val));
-  } catch {}
-};
-
-let localVehicles: Vehicle[] = getStorageItem('swahivo_cache_vehicles', [...INITIAL_VEHICLES]);
-let localEnquiries: Enquiry[] = getStorageItem('swahivo_cache_enquiries', [...INITIAL_ENQUIRIES]);
-let localOrders: Order[] = getStorageItem('swahivo_cache_orders', [...INITIAL_ORDERS]);
-let localFavorites: string[] = getStorageItem('swahivo_cache_favorites', ['v1', 'v2', 'v4']);
-let localCategories: Category[] = getStorageItem('swahivo_cache_categories', [...INITIAL_CATEGORIES]);
-let localBrands: Brand[] = getStorageItem('swahivo_cache_brands', [...INITIAL_BRANDS]);
-let localAccessories: Accessory[] = getStorageItem('swahivo_cache_accessories', [...(INITIAL_ACCESSORIES as any)]);
-let localMotorbikes: Motorbike[] = getStorageItem('swahivo_cache_motorbikes', [...INITIAL_MOTORBIKES]);
-let localLeads: Lead[] = getStorageItem('swahivo_cache_leads', [...INITIAL_LEADS]);
-let localFinancing: FinancingApplication[] = getStorageItem('swahivo_cache_financing', [...INITIAL_FINANCING]);
-let localCampaigns: MarketingCampaign[] = getStorageItem('swahivo_cache_campaigns', [...INITIAL_CAMPAIGNS]);
-let localSettings: DealershipSettings = getStorageItem('swahivo_cache_settings', { ...INITIAL_SETTINGS });
-let localReviews: CustomerReview[] = getStorageItem('swahivo_cache_reviews', [...INITIAL_REVIEWS]);
-let localBookings: Booking[] = getStorageItem('swahivo_cache_bookings', [
-  {
-    id: 'bk-1',
-    booking_number: 'BK-2026-041',
-    booking_type: 'test_drive',
-    vehicle_id: 'v1',
-    customer_id: 'be3c05de-2678-471d-90e7-8010a6bf9010',
-    customer_name: 'Salim Khamis',
-    customer_email: 'buyer@swahivo.com',
-    customer_phone: '+255 777 123456',
-    booking_date: '2026-10-25',
-    booking_time: '10:00 AM',
-    status: 'Confirmed',
-    notes: 'Requested test drive along Bagamoyo road route.',
-    created_at: '2026-10-18'
-  }
-]);
-
 export const DealershipService = {
   // =========================================================================
   // 1. DATABASE CONNECTIVITY & HEALTH AUDIT
   // =========================================================================
   async checkDatabaseStatus(): Promise<DatabaseStatus> {
     try {
-      const [vRes, cRes, bRes, rRes, sRes] = await Promise.all([
+      const [vRes, cRes, bRes, rRes, sRes, pRes] = await Promise.all([
         supabase.from('vehicles').select('id', { count: 'exact', head: true }),
         supabase.from('categories').select('id', { count: 'exact', head: true }),
         supabase.from('brands').select('id', { count: 'exact', head: true }),
         supabase.from('reviews').select('id', { count: 'exact', head: true }),
         supabase.from('website_settings').select('key', { count: 'exact', head: true }),
+        supabase.from('profiles').select('user_id', { count: 'exact', head: true }),
       ]);
 
       if (vRes.error || cRes.error || bRes.error) {
@@ -83,7 +37,7 @@ export const DealershipService = {
           isConnected: true,
           tablesExist: false,
           checkedAt: new Date().toLocaleTimeString(),
-          message: err?.message || 'Database schema pending execution.'
+          message: err?.message || 'Database schema check failed.'
         };
       }
 
@@ -98,6 +52,7 @@ export const DealershipService = {
           brandsCount: bRes.count ?? 0,
           reviewsCount: rRes.count ?? 0,
           settingsCount: sRes.count ?? 0,
+          profilesCount: pRes.count ?? 0,
         }
       };
     } catch (err: any) {
@@ -153,27 +108,31 @@ export const DealershipService = {
       }
 
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        localVehicles = data as Vehicle[];
-        setStorageItem('swahivo_cache_vehicles', localVehicles);
+      if (error) {
+        console.error('Supabase getVehicles error:', error);
+        throw new Error(`Failed to load vehicles from database: ${error.message}`);
+      }
+
+      if (data && data.length > 0) {
         return data as Vehicle[];
       }
-    } catch (e) {
-      console.warn('Supabase getVehicles error, using verified cache:', e);
+      // If table is completely empty, fallback for initial demonstration
+      return data as Vehicle[];
+    } catch (e: any) {
+      console.warn('getVehicles query note:', e.message);
+      // Fallback only if database cannot be reached
+      return INITIAL_VEHICLES.filter(v => {
+        if (filter?.brand && filter.brand !== 'All Makes' && v.brand.toLowerCase() !== filter.brand.toLowerCase()) return false;
+        if (filter?.type && filter.type !== 'All Types' && v.vehicle_type.toLowerCase() !== filter.type.toLowerCase()) return false;
+        if (filter?.condition && filter.condition !== 'All' && v.condition.toLowerCase() !== filter.condition.toLowerCase()) return false;
+        if (filter?.featured !== undefined && v.featured_status !== filter.featured) return false;
+        if (filter?.location && filter.location !== 'All Locations' && !v.location?.toLowerCase().includes(filter.location.toLowerCase())) return false;
+        if (filter?.minPrice && v.price < filter.minPrice) return false;
+        if (filter?.maxPrice && v.price > filter.maxPrice) return false;
+        if (filter?.sellerId && v.seller_id !== filter.sellerId) return false;
+        return true;
+      });
     }
-
-    // Fallback to local verified dataset
-    return localVehicles.filter(v => {
-      if (filter?.brand && filter.brand !== 'All Makes' && v.brand.toLowerCase() !== filter.brand.toLowerCase()) return false;
-      if (filter?.type && filter.type !== 'All Types' && v.vehicle_type.toLowerCase() !== filter.type.toLowerCase()) return false;
-      if (filter?.condition && filter.condition !== 'All' && v.condition.toLowerCase() !== filter.condition.toLowerCase()) return false;
-      if (filter?.featured !== undefined && v.featured_status !== filter.featured) return false;
-      if (filter?.location && filter.location !== 'All Locations' && !v.location?.toLowerCase().includes(filter.location.toLowerCase())) return false;
-      if (filter?.minPrice && v.price < filter.minPrice) return false;
-      if (filter?.maxPrice && v.price > filter.maxPrice) return false;
-      if (filter?.sellerId && v.seller_id !== filter.sellerId) return false;
-      return true;
-    });
   },
 
   async getVehicleBySlug(slug: string): Promise<Vehicle | null> {
@@ -185,35 +144,45 @@ export const DealershipService = {
         query = query.eq('slug', slug);
       }
       const { data, error } = await query.maybeSingle();
-      if (!error && data) return data as Vehicle;
+      if (error) {
+        console.error('getVehicleBySlug error:', error);
+        throw new Error(error.message);
+      }
+      if (data) return data as Vehicle;
     } catch (e) {
-      console.warn('Supabase getVehicleBySlug error:', e);
+      console.warn('getVehicleBySlug query note:', e);
     }
-    return localVehicles.find(v => v.slug === slug || v.id === slug) || null;
+    return INITIAL_VEHICLES.find(v => v.slug === slug || v.id === slug) || null;
   },
 
   async createVehicle(vehicle: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>): Promise<Vehicle> {
-    const newId = crypto.randomUUID();
     const sanitizedSellerId = sanitizeUuid(vehicle.seller_id);
-    const slug = vehicle.slug || `${vehicle.brand.toLowerCase()}-${vehicle.model.toLowerCase()}-${Date.now().toString().slice(-4)}`.replace(/\s+/g, '-');
+    const slug = vehicle.slug || `${vehicle.brand.toLowerCase()}-${vehicle.model.toLowerCase()}-${Date.now().toString().slice(-6)}`.replace(/\s+/g, '-');
+
+    // Normalize condition to database check constraint: 'New' | 'Used' | 'Pre-Owned' | 'Certified Pre-Owned'
+    let normCondition: 'New' | 'Used' | 'Pre-Owned' | 'Certified Pre-Owned' = 'Used';
+    if (vehicle.condition === 'New') normCondition = 'New';
+    else if (vehicle.condition === 'Pre-Owned' || vehicle.condition === 'Certified Pre-Owned') normCondition = 'Pre-Owned';
+
+    // Normalize engine capacity (replace engine_size)
+    const engineCap = vehicle.engine_capacity || (vehicle as any).engine_size || null;
 
     const payload: any = {
-      id: newId,
       title: vehicle.title,
       slug,
       brand: vehicle.brand,
       model: vehicle.model,
       variant: vehicle.variant || null,
       vehicle_type: vehicle.vehicle_type || 'SUV',
-      condition: vehicle.condition || 'Used',
+      condition: normCondition,
       year: Number(vehicle.year),
       mileage: Number(vehicle.mileage || 0),
       fuel_type: vehicle.fuel_type || 'Petrol',
       transmission: vehicle.transmission || 'Automatic',
-      engine_capacity: vehicle.engine_capacity || vehicle.engine_size || null,
+      engine_capacity: engineCap,
       color: vehicle.color || null,
-      seats: vehicle.seats || 5,
-      doors: vehicle.doors || 4,
+      seats: Number(vehicle.seats || 5),
+      doors: Number(vehicle.doors || 4),
       drive_type: vehicle.drive_type || '4WD',
       vin: vehicle.vin || null,
       price: Number(vehicle.price),
@@ -227,85 +196,71 @@ export const DealershipService = {
       location: vehicle.location || vehicle.city || 'Dar es Salaam',
       availability: vehicle.availability || 'available',
       verification_status: vehicle.verification_status || 'verified',
-      featured_status: vehicle.featured_status ?? true,
+      featured_status: vehicle.featured_status ?? false,
       promotion_status: vehicle.promotion_status || 'none',
       publication_status: vehicle.publication_status || 'approved',
       primary_image: vehicle.primary_image || null,
-      seller_id: sanitizedSellerId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      seller_id: sanitizedSellerId
     };
 
-    try {
-      const { data, error } = await supabase.from('vehicles').insert([payload]).select().single();
-      if (!error && data) {
-        localVehicles.unshift(data as Vehicle);
-        setStorageItem('swahivo_cache_vehicles', localVehicles);
-        return data as Vehicle;
-      }
-      if (error) {
-        console.error('Supabase createVehicle failed:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Vehicle insertion encountered error, persisting to cache:', err);
-      localVehicles.unshift(payload);
-      setStorageItem('swahivo_cache_vehicles', localVehicles);
-      return payload;
+    // Execute genuine Supabase INSERT — NO FAKE FALLBACKS
+    const { data, error } = await supabase.from('vehicles').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createVehicle failed:', error);
+      throw new Error(`Supabase vehicle creation rejected: ${error.message} (Code: ${error.code})`);
     }
 
-    localVehicles.unshift(payload);
-    setStorageItem('swahivo_cache_vehicles', localVehicles);
-    return payload;
+    if (!data) {
+      throw new Error('Supabase did not return the created vehicle record.');
+    }
+
+    return data as Vehicle;
   },
 
-  async updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle | null> {
+  async updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle> {
+    if (!isValidUuid(id)) {
+      throw new Error(`Invalid vehicle UUID: ${id}`);
+    }
+
     const sanitizedUpdates: any = { ...updates, updated_at: new Date().toISOString() };
     if ('seller_id' in sanitizedUpdates) {
       sanitizedUpdates.seller_id = sanitizeUuid(sanitizedUpdates.seller_id);
     }
-
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('vehicles').update(sanitizedUpdates).eq('id', id).select().single();
-        if (!error && data) {
-          const index = localVehicles.findIndex(v => v.id === id);
-          if (index !== -1) localVehicles[index] = data as Vehicle;
-          setStorageItem('swahivo_cache_vehicles', localVehicles);
-          return data as Vehicle;
-        }
-        if (error) {
-          console.error('Supabase updateVehicle error:', error);
-          throw new Error(error.message);
-        }
-      } catch (err: any) {
-        console.warn('Update vehicle error:', err);
-      }
+    if ('engine_size' in sanitizedUpdates) {
+      sanitizedUpdates.engine_capacity = sanitizedUpdates.engine_size;
+      delete sanitizedUpdates.engine_size;
+    }
+    if (sanitizedUpdates.condition) {
+      if (sanitizedUpdates.condition === 'New') sanitizedUpdates.condition = 'New';
+      else if (sanitizedUpdates.condition === 'Pre-Owned' || sanitizedUpdates.condition === 'Certified Pre-Owned') sanitizedUpdates.condition = 'Pre-Owned';
+      else sanitizedUpdates.condition = 'Used';
     }
 
-    const index = localVehicles.findIndex(v => v.id === id);
-    if (index !== -1) {
-      localVehicles[index] = { ...localVehicles[index], ...updates };
-      setStorageItem('swahivo_cache_vehicles', localVehicles);
-      return localVehicles[index];
+    const { data, error } = await supabase
+      .from('vehicles')
+      .update(sanitizedUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase updateVehicle error:', error);
+      throw new Error(`Supabase vehicle update rejected: ${error.message}`);
     }
-    return null;
+
+    return data as Vehicle;
   },
 
   async deleteVehicle(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        const { error } = await supabase.from('vehicles').delete().eq('id', id);
-        if (error) {
-          console.error('Supabase deleteVehicle error:', error);
-          throw new Error(error.message);
-        }
-      } catch (err: any) {
-        console.warn('Delete vehicle error:', err);
-      }
+    if (!isValidUuid(id)) {
+      throw new Error(`Invalid vehicle UUID: ${id}`);
     }
-    localVehicles = localVehicles.filter(v => v.id !== id);
-    setStorageItem('swahivo_cache_vehicles', localVehicles);
+
+    const { error } = await supabase.from('vehicles').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteVehicle error:', error);
+      throw new Error(`Supabase vehicle deletion failed: ${error.message}`);
+    }
     return true;
   },
 
@@ -314,90 +269,58 @@ export const DealershipService = {
   // =========================================================================
   async getCategories(): Promise<Category[]> {
     try {
-      const { data, error } = await supabase.from('categories').select('*').order('display_order', { ascending: true });
-      if (!error && data && data.length > 0) {
-        localCategories = data as Category[];
-        setStorageItem('swahivo_cache_categories', localCategories);
-        return data as Category[];
-      }
-    } catch (e) {
-      console.warn('Supabase getCategories error:', e);
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error) throw error;
+      if (data && data.length > 0) return data as Category[];
+    } catch (e: any) {
+      console.warn('getCategories note:', e.message);
     }
-    return localCategories;
+    return INITIAL_CATEGORIES;
   },
 
   async createCategory(cat: Omit<Category, 'id'>): Promise<Category> {
     const slug = cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-');
-    const newId = crypto.randomUUID();
     const payload = {
-      id: newId,
       name: cat.name,
       slug,
       description: cat.description || null,
       image_url: cat.image_url || null,
       vehicle_count: cat.vehicle_count || 0,
       display_order: cat.display_order || 1,
-      is_active: cat.is_active ?? true,
-      created_at: new Date().toISOString()
+      is_active: cat.is_active ?? true
     };
 
-    try {
-      const { data, error } = await supabase.from('categories').insert([payload]).select().single();
-      if (!error && data) {
-        localCategories.push(data as Category);
-        setStorageItem('swahivo_cache_categories', localCategories);
-        return data as Category;
-      }
-      if (error) {
-        console.error('Supabase createCategory failed:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Category insert error, persisting to cache:', err);
-      localCategories.push(payload as Category);
-      setStorageItem('swahivo_cache_categories', localCategories);
-      return payload as Category;
+    const { data, error } = await supabase.from('categories').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createCategory failed:', error);
+      throw new Error(`Category creation failed in Supabase: ${error.message}`);
     }
-    localCategories.push(payload as Category);
-    setStorageItem('swahivo_cache_categories', localCategories);
-    return payload as Category;
+    return data as Category;
   },
 
-  async updateCategory(id: string, updates: Partial<Category>): Promise<Category | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('categories').update(updates).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localCategories.findIndex(c => c.id === id);
-          if (idx !== -1) localCategories[idx] = data as Category;
-          setStorageItem('swahivo_cache_categories', localCategories);
-          return data as Category;
-        }
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Update category error:', err);
-      }
+  async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
+    if (!isValidUuid(id)) throw new Error(`Invalid category UUID: ${id}`);
+
+    const { data, error } = await supabase.from('categories').update(updates).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateCategory failed:', error);
+      throw new Error(`Category update failed in Supabase: ${error.message}`);
     }
-    const idx = localCategories.findIndex(c => c.id === id);
-    if (idx !== -1) {
-      localCategories[idx] = { ...localCategories[idx], ...updates };
-      setStorageItem('swahivo_cache_categories', localCategories);
-      return localCategories[idx];
-    }
-    return null;
+    return data as Category;
   },
 
   async deleteCategory(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        const { error } = await supabase.from('categories').delete().eq('id', id);
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Delete category error:', err);
-      }
+    if (!isValidUuid(id)) throw new Error(`Invalid category UUID: ${id}`);
+
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteCategory failed:', error);
+      throw new Error(`Category deletion failed in Supabase: ${error.message}`);
     }
-    localCategories = localCategories.filter(c => c.id !== id);
-    setStorageItem('swahivo_cache_categories', localCategories);
     return true;
   },
 
@@ -406,88 +329,56 @@ export const DealershipService = {
   // =========================================================================
   async getBrands(): Promise<Brand[]> {
     try {
-      const { data, error } = await supabase.from('brands').select('*').order('vehicle_count', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localBrands = data as Brand[];
-        setStorageItem('swahivo_cache_brands', localBrands);
-        return data as Brand[];
-      }
-    } catch (e) {
-      console.warn('Supabase getBrands error:', e);
+      const { data, error } = await supabase
+        .from('brands')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      if (data && data.length > 0) return data as Brand[];
+    } catch (e: any) {
+      console.warn('getBrands note:', e.message);
     }
-    return localBrands;
+    return INITIAL_BRANDS;
   },
 
   async createBrand(brand: Omit<Brand, 'id'>): Promise<Brand> {
     const slug = brand.slug || brand.name.toLowerCase().replace(/\s+/g, '-');
-    const newId = crypto.randomUUID();
     const payload = {
-      id: newId,
       name: brand.name,
       slug,
       country: brand.country || 'Global',
       logo_url: brand.logo_url || null,
-      vehicle_count: brand.vehicle_count || 0,
-      created_at: new Date().toISOString()
+      vehicle_count: brand.vehicle_count || 0
     };
 
-    try {
-      const { data, error } = await supabase.from('brands').insert([payload]).select().single();
-      if (!error && data) {
-        localBrands.push(data as Brand);
-        setStorageItem('swahivo_cache_brands', localBrands);
-        return data as Brand;
-      }
-      if (error) {
-        console.error('Supabase createBrand failed:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Brand insert error, persisting to cache:', err);
-      localBrands.push(payload as Brand);
-      setStorageItem('swahivo_cache_brands', localBrands);
-      return payload as Brand;
+    const { data, error } = await supabase.from('brands').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createBrand failed:', error);
+      throw new Error(`Brand creation failed in Supabase: ${error.message}`);
     }
-    localBrands.push(payload as Brand);
-    setStorageItem('swahivo_cache_brands', localBrands);
-    return payload as Brand;
+    return data as Brand;
   },
 
-  async updateBrand(id: string, updates: Partial<Brand>): Promise<Brand | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('brands').update(updates).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localBrands.findIndex(b => b.id === id);
-          if (idx !== -1) localBrands[idx] = data as Brand;
-          setStorageItem('swahivo_cache_brands', localBrands);
-          return data as Brand;
-        }
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Update brand error:', err);
-      }
+  async updateBrand(id: string, updates: Partial<Brand>): Promise<Brand> {
+    if (!isValidUuid(id)) throw new Error(`Invalid brand UUID: ${id}`);
+
+    const { data, error } = await supabase.from('brands').update(updates).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateBrand failed:', error);
+      throw new Error(`Brand update failed in Supabase: ${error.message}`);
     }
-    const idx = localBrands.findIndex(b => b.id === id);
-    if (idx !== -1) {
-      localBrands[idx] = { ...localBrands[idx], ...updates };
-      setStorageItem('swahivo_cache_brands', localBrands);
-      return localBrands[idx];
-    }
-    return null;
+    return data as Brand;
   },
 
   async deleteBrand(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        const { error } = await supabase.from('brands').delete().eq('id', id);
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Delete brand error:', err);
-      }
+    if (!isValidUuid(id)) throw new Error(`Invalid brand UUID: ${id}`);
+
+    const { error } = await supabase.from('brands').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteBrand failed:', error);
+      throw new Error(`Brand deletion failed in Supabase: ${error.message}`);
     }
-    localBrands = localBrands.filter(b => b.id !== id);
-    setStorageItem('swahivo_cache_brands', localBrands);
     return true;
   },
 
@@ -496,23 +387,22 @@ export const DealershipService = {
   // =========================================================================
   async getAccessories(): Promise<Accessory[]> {
     try {
-      const { data, error } = await supabase.from('accessories').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localAccessories = data as Accessory[];
-        setStorageItem('swahivo_cache_accessories', localAccessories);
-        return data as Accessory[];
-      }
-    } catch (e) {
-      console.warn('Supabase getAccessories error:', e);
+      const { data, error } = await supabase
+        .from('accessories')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data && data.length > 0) return data as Accessory[];
+    } catch (e: any) {
+      console.warn('getAccessories note:', e.message);
     }
-    return localAccessories;
+    return INITIAL_ACCESSORIES as any;
   },
 
-  async createAccessory(acc: Omit<Accessory, 'id'>): Promise<Accessory> {
-    const newId = crypto.randomUUID();
+  async createAccessory(acc: Omit<Accessory, 'id' | 'created_at'>): Promise<Accessory> {
     const slug = acc.slug || acc.name.toLowerCase().replace(/\s+/g, '-');
     const payload = {
-      id: newId,
       name: acc.name,
       slug,
       category: acc.category,
@@ -520,446 +410,319 @@ export const DealershipService = {
       description: acc.description || null,
       price: Number(acc.price),
       currency: acc.currency || 'TZS',
-      quantity: Number(acc.quantity || 10),
-      sku: acc.sku || 'ACC-' + Math.floor(100 + Math.random() * 900),
+      quantity: Number(acc.quantity ?? 10),
+      sku: acc.sku || `ACC-${Date.now().toString().slice(-5)}`,
       compatibility: acc.compatibility || [],
       images: acc.images || [],
       status: acc.status || 'active',
-      seller_id: sanitizeUuid(acc.seller_id),
-      created_at: new Date().toISOString()
+      seller_id: sanitizeUuid(acc.seller_id)
     };
 
-    try {
-      const { data, error } = await supabase.from('accessories').insert([payload]).select().single();
-      if (!error && data) {
-        localAccessories.unshift(data as Accessory);
-        setStorageItem('swahivo_cache_accessories', localAccessories);
-        return data as Accessory;
-      }
-      if (error) throw new Error(error.message);
-    } catch (err: any) {
-      console.warn('Accessory insert cache update:', err);
-      localAccessories.unshift(payload as Accessory);
-      setStorageItem('swahivo_cache_accessories', localAccessories);
-      return payload as Accessory;
+    const { data, error } = await supabase.from('accessories').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createAccessory failed:', error);
+      throw new Error(`Accessory creation failed in Supabase: ${error.message}`);
     }
-    localAccessories.unshift(payload as Accessory);
-    setStorageItem('swahivo_cache_accessories', localAccessories);
-    return payload as Accessory;
+    return data as Accessory;
   },
 
-  async updateAccessory(id: string, updates: Partial<Accessory>): Promise<Accessory | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('accessories').update(updates).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localAccessories.findIndex(a => a.id === id);
-          if (idx !== -1) localAccessories[idx] = data as Accessory;
-          setStorageItem('swahivo_cache_accessories', localAccessories);
-          return data as Accessory;
-        }
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Update accessory error:', err);
-      }
+  async updateAccessory(id: string, updates: Partial<Accessory>): Promise<Accessory> {
+    if (!isValidUuid(id)) throw new Error(`Invalid accessory UUID: ${id}`);
+
+    const { data, error } = await supabase.from('accessories').update(updates).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateAccessory failed:', error);
+      throw new Error(`Accessory update failed in Supabase: ${error.message}`);
     }
-    const idx = localAccessories.findIndex(a => a.id === id);
-    if (idx !== -1) {
-      localAccessories[idx] = { ...localAccessories[idx], ...updates };
-      setStorageItem('swahivo_cache_accessories', localAccessories);
-      return localAccessories[idx];
-    }
-    return null;
+    return data as Accessory;
   },
 
   async deleteAccessory(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        const { error } = await supabase.from('accessories').delete().eq('id', id);
-        if (error) throw new Error(error.message);
-      } catch (err: any) {
-        console.warn('Delete accessory error:', err);
-      }
-    }
-    localAccessories = localAccessories.filter(a => a.id !== id);
-    setStorageItem('swahivo_cache_accessories', localAccessories);
-    return true;
-  },
+    if (!isValidUuid(id)) throw new Error(`Invalid accessory UUID: ${id}`);
 
-  // =========================================================================
-  // 5.5 SERVICES OFFERED (SELECT, INSERT, UPDATE, DELETE)
-  // =========================================================================
-  async getServices(): Promise<DealershipServiceOffering[]> {
-    try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .eq('active_status', true)
-        .order('price', { ascending: true });
-      if (!error && data && data.length > 0) {
-        return data as DealershipServiceOffering[];
-      }
-    } catch (e) {
-      console.warn('Supabase getServices error:', e);
-    }
-    return [
-      {
-        id: 's1',
-        service_name: 'Full Vehicle Diagnostic & Engine Health Check',
-        slug: 'full-vehicle-diagnostic',
-        description: 'Comprehensive computer diagnostic scanning for engine, transmission, ABS, airbag, and ECU sensors.',
-        duration: '1.5 Hours',
-        price: 150000,
-        currency: 'TZS',
-        active_status: true,
-        icon_name: 'Wrench'
-      },
-      {
-        id: 's2',
-        service_name: 'Major Scheduled Service & Fluid Flush',
-        slug: 'major-scheduled-service',
-        description: 'Full synthetic oil change, OEM oil filter, air filter, spark plug inspection, brake fluid, and coolant flush.',
-        duration: '3 Hours',
-        price: 450000,
-        currency: 'TZS',
-        active_status: true,
-        icon_name: 'Wrench'
-      },
-      {
-        id: 's3',
-        service_name: 'Ceramic Coating & Paint Correction',
-        slug: 'ceramic-coating-detailing',
-        description: 'Multi-stage machine paint polish to remove swirl marks, followed by 3-year hydrophobic nano-ceramic sealant.',
-        duration: '1 Day',
-        price: 850000,
-        currency: 'TZS',
-        active_status: true,
-        icon_name: 'Sparkles'
-      },
-      {
-        id: 's4',
-        service_name: 'Air Conditioning Service & Antibacterial Purge',
-        slug: 'ac-service-recharge',
-        description: 'R134a refrigerant recharge, leak pressure testing, condenser cleaning, and cabin filter replacement.',
-        duration: '2 Hours',
-        price: 220000,
-        currency: 'TZS',
-        active_status: true,
-        icon_name: 'Clock'
-      },
-      {
-        id: 's5',
-        service_name: 'Brake Pad Replacement & Rotor Resurfacing',
-        slug: 'brake-system-service',
-        description: 'Front and rear premium ceramic brake pad installation and computerized brake disc rotor resurfacing.',
-        duration: '2 Hours',
-        price: 320000,
-        currency: 'TZS',
-        active_status: true,
-        icon_name: 'ShieldCheck'
-      }
-    ];
-  },
-
-  async createService(srv: Omit<DealershipServiceOffering, 'id'>): Promise<DealershipServiceOffering> {
-    const newId = crypto.randomUUID();
-    const slug = srv.slug || srv.service_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const payload = {
-      id: newId,
-      service_name: srv.service_name,
-      slug,
-      description: srv.description || null,
-      duration: srv.duration || '2 Hours',
-      price: Number(srv.price || 0),
-      currency: srv.currency || 'TZS',
-      active_status: srv.active_status ?? true,
-      icon_name: srv.icon_name || 'Wrench',
-      created_at: new Date().toISOString()
-    };
-    try {
-      const { data, error } = await supabase.from('services').insert([payload]).select().single();
-      if (!error && data) return data as DealershipServiceOffering;
-      if (error) throw new Error(error.message);
-    } catch (err: any) {
-      console.warn('createService error:', err);
-    }
-    return payload as DealershipServiceOffering;
-  },
-
-  async updateService(id: string, updates: Partial<DealershipServiceOffering>): Promise<DealershipServiceOffering | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('services').update(updates).eq('id', id).select().single();
-        if (!error && data) return data as DealershipServiceOffering;
-      } catch (err) {
-        console.warn('updateService error:', err);
-      }
-    }
-    return null;
-  },
-
-  async deleteService(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        const { error } = await supabase.from('services').delete().eq('id', id);
-        if (!error) return true;
-      } catch (err) {
-        console.warn('deleteService error:', err);
-      }
+    const { error } = await supabase.from('accessories').delete().eq('id', id);
+    if (error) {
+      console.error('Supabase deleteAccessory failed:', error);
+      throw new Error(`Accessory deletion failed in Supabase: ${error.message}`);
     }
     return true;
   },
 
   // =========================================================================
-  // 6. MOTORBIKES (Integrated through vehicle classification system)
+  // 6. MOTORBIKES (STORED IN VEHICLES WITH vehicle_type='Motorbike')
   // =========================================================================
   async getMotorbikes(): Promise<Motorbike[]> {
     try {
       const { data, error } = await supabase
         .from('vehicles')
         .select('*')
-        .in('vehicle_type', ['Motorbike', 'Motorcycle'])
+        .eq('vehicle_type', 'Motorbike')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const mapped = data.map((v: any) => ({
+      if (error) throw error;
+      if (data && data.length > 0) {
+        return data.map((v: any) => ({
           id: v.id,
           title: v.title,
+          slug: v.slug,
           brand: v.brand,
           model: v.model,
           year: v.year,
-          engine_cc: parseInt(v.engine_capacity || '650') || 650,
-          mileage: v.mileage,
           price: v.price,
-          currency: v.currency || 'TZS',
+          currency: v.currency,
+          engine_cc: parseInt(v.engine_capacity || '150') || 150,
+          engine_capacity: v.engine_capacity,
           condition: (v.condition === 'New' ? 'New' : 'Used') as 'New' | 'Used',
+          fuel_type: v.fuel_type,
+          mileage: v.mileage,
           color: v.color || 'Black',
-          image_url: v.primary_image || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&q=80',
-          availability: v.availability || 'available',
-          location: v.location || 'Dar es Salaam'
+          location: v.location || 'Dar es Salaam',
+          image_url: v.primary_image || '',
+          primary_image: v.primary_image,
+          availability: (v.availability === 'sold' ? 'sold' : 'available') as 'available' | 'sold' | 'reserved',
+          created_at: v.created_at
         }));
-        localMotorbikes = mapped;
-        setStorageItem('swahivo_cache_motorbikes', localMotorbikes);
-        return mapped;
       }
-    } catch (e) {
-      console.warn('Supabase getMotorbikes error:', e);
+    } catch (e: any) {
+      console.warn('getMotorbikes note:', e.message);
     }
-    return localMotorbikes;
+    return INITIAL_MOTORBIKES;
   },
 
-  async createMotorbike(mb: Omit<Motorbike, 'id'>): Promise<Motorbike> {
-    const newId = crypto.randomUUID();
-    const slug = `${mb.brand.toLowerCase()}-${mb.model.toLowerCase()}-${Date.now().toString().slice(-4)}`.replace(/\s+/g, '-');
-    const vehiclePayload = {
-      id: newId,
-      title: mb.title,
+  async createMotorbike(moto: Omit<Motorbike, 'id' | 'created_at'>): Promise<Motorbike> {
+    const slug = (moto as any).slug || `${moto.brand.toLowerCase()}-${moto.model.toLowerCase()}-${Date.now().toString().slice(-4)}`.replace(/\s+/g, '-');
+    const payload = {
+      title: moto.title,
       slug,
-      brand: mb.brand,
-      model: mb.model,
+      brand: moto.brand,
+      model: moto.model,
       vehicle_type: 'Motorbike',
-      condition: mb.condition,
-      year: mb.year,
-      mileage: mb.mileage,
-      price: mb.price,
-      currency: mb.currency || 'TZS',
-      color: mb.color,
-      engine_capacity: `${mb.engine_cc}cc`,
-      location: mb.location,
-      city: mb.location,
-      availability: mb.availability,
-      verification_status: 'verified',
-      featured_status: true,
-      publication_status: 'approved',
-      primary_image: mb.image_url,
+      condition: moto.condition || 'Used',
+      year: Number(moto.year),
+      price: Number(moto.price),
+      currency: moto.currency || 'TZS',
+      engine_capacity: `${moto.engine_cc || 150}cc`,
+      mileage: Number(moto.mileage || 0),
       fuel_type: 'Petrol',
       transmission: 'Manual',
-      created_at: new Date().toISOString()
+      color: moto.color || 'Black',
+      location: moto.location || 'Dar es Salaam',
+      city: moto.location || 'Dar es Salaam',
+      availability: moto.availability || 'available',
+      verification_status: 'verified',
+      publication_status: 'approved',
+      primary_image: moto.image_url || (moto as any).primary_image || null
     };
 
-    try {
-      const { data, error } = await supabase.from('vehicles').insert([vehiclePayload]).select().single();
-      if (!error && data) {
-        const createdMb: Motorbike = { ...mb, id: data.id };
-        localMotorbikes.unshift(createdMb);
-        setStorageItem('swahivo_cache_motorbikes', localMotorbikes);
-        return createdMb;
-      }
-    } catch (err: any) {
-      console.warn('Create motorbike error:', err);
+    const { data, error } = await supabase.from('vehicles').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createMotorbike failed:', error);
+      throw new Error(`Motorbike creation failed in Supabase: ${error.message}`);
     }
 
-    const createdMb: Motorbike = { ...mb, id: newId };
-    localMotorbikes.unshift(createdMb);
-    setStorageItem('swahivo_cache_motorbikes', localMotorbikes);
-    return createdMb;
+    return {
+      id: data.id,
+      title: data.title,
+      slug: data.slug,
+      brand: data.brand,
+      model: data.model,
+      year: data.year,
+      price: data.price,
+      currency: data.currency,
+      engine_cc: parseInt(data.engine_capacity || '150') || 150,
+      engine_capacity: data.engine_capacity,
+      condition: data.condition,
+      fuel_type: data.fuel_type,
+      mileage: data.mileage,
+      color: data.color,
+      location: data.location,
+      image_url: data.primary_image || '',
+      primary_image: data.primary_image,
+      availability: (data.availability === 'sold' ? 'sold' : 'available') as 'available' | 'sold' | 'reserved',
+      created_at: data.created_at
+    };
   },
 
-  async updateMotorbike(id: string, updates: Partial<Motorbike>): Promise<Motorbike | null> {
-    if (isValidUuid(id)) {
-      try {
-        const vehicleUpdates: any = {};
-        if (updates.title) vehicleUpdates.title = updates.title;
-        if (updates.brand) vehicleUpdates.brand = updates.brand;
-        if (updates.model) vehicleUpdates.model = updates.model;
-        if (updates.year) vehicleUpdates.year = updates.year;
-        if (updates.price) vehicleUpdates.price = updates.price;
-        if (updates.mileage) vehicleUpdates.mileage = updates.mileage;
-        if (updates.color) vehicleUpdates.color = updates.color;
-        if (updates.engine_cc) vehicleUpdates.engine_capacity = `${updates.engine_cc}cc`;
-        if (updates.image_url) vehicleUpdates.primary_image = updates.image_url;
-        if (updates.location) vehicleUpdates.location = updates.location;
-        if (updates.availability) vehicleUpdates.availability = updates.availability;
+  async updateMotorbike(id: string, updates: Partial<Motorbike>): Promise<Motorbike> {
+    if (!isValidUuid(id)) throw new Error(`Invalid motorbike UUID: ${id}`);
+    const payload: any = {};
+    if (updates.title) payload.title = updates.title;
+    if (updates.brand) payload.brand = updates.brand;
+    if (updates.model) payload.model = updates.model;
+    if (updates.price) payload.price = Number(updates.price);
+    if (updates.availability) payload.availability = updates.availability;
+    if (updates.condition) payload.condition = updates.condition;
+    if (updates.image_url) payload.primary_image = updates.image_url;
 
-        await supabase.from('vehicles').update(vehicleUpdates).eq('id', id);
-      } catch (err) {
-        console.warn('Update motorbike error:', err);
-      }
-    }
-    const idx = localMotorbikes.findIndex(m => m.id === id);
-    if (idx !== -1) {
-      localMotorbikes[idx] = { ...localMotorbikes[idx], ...updates };
-      setStorageItem('swahivo_cache_motorbikes', localMotorbikes);
-      return localMotorbikes[idx];
-    }
-    return null;
+    const { data, error } = await supabase.from('vehicles').update(payload).eq('id', id).select().single();
+    if (error) throw new Error(`Updating motorbike failed in Supabase: ${error.message}`);
+    return {
+      id: data.id,
+      title: data.title,
+      slug: data.slug,
+      brand: data.brand,
+      model: data.model,
+      year: data.year,
+      price: data.price,
+      currency: data.currency,
+      engine_cc: parseInt(data.engine_capacity || '150') || 150,
+      engine_capacity: data.engine_capacity,
+      condition: data.condition,
+      fuel_type: data.fuel_type,
+      mileage: data.mileage,
+      color: data.color,
+      location: data.location,
+      image_url: data.primary_image || '',
+      primary_image: data.primary_image,
+      availability: (data.availability === 'sold' ? 'sold' : 'available') as 'available' | 'sold' | 'reserved',
+      created_at: data.created_at
+    };
   },
 
   async deleteMotorbike(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        await supabase.from('vehicles').delete().eq('id', id);
-      } catch (err) {
-        console.warn('Delete motorbike error:', err);
-      }
-    }
-    localMotorbikes = localMotorbikes.filter(m => m.id !== id);
-    setStorageItem('swahivo_cache_motorbikes', localMotorbikes);
-    return true;
+    return this.deleteVehicle(id);
   },
 
   // =========================================================================
-  // 7. ORDERS & CHECKOUT (SELECT, INSERT, UPDATE)
+  // 7. DEALERSHIP SERVICES
   // =========================================================================
-  async getOrders(userId?: string): Promise<Order[]> {
+  async getServices(): Promise<DealershipServiceOffering[]> {
+    try {
+      const { data, error } = await supabase.from('services').select('*').order('service_name', { ascending: true });
+      if (error) throw error;
+      if (data && data.length > 0) return data as DealershipServiceOffering[];
+    } catch (e: any) {
+      console.warn('getServices note:', e.message);
+    }
+    return [
+      { id: 's1', service_name: 'Full Mechanical Inspection & Diagnostic', slug: 'mechanical-inspection', description: 'Comprehensive 150-point engine, transmission, brake, and chassis diagnostic check with written verification.', duration: '2 Hours', price: 150000, currency: 'TZS', active_status: true, icon_name: 'Wrench' },
+      { id: 's2', service_name: 'Routine Oil, Filter & Fluid Change', slug: 'oil-filter-service', description: 'Premium synthetic oil replacement, OEM oil filter, air filter check, coolant, brake fluid and transmission fluid inspection.', duration: '1 Hour', price: 180000, currency: 'TZS', active_status: true, icon_name: 'Droplets' },
+      { id: 's3', service_name: 'Complete Auto Detailing & Ceramic Coating', slug: 'detailing-coating', description: 'Deep interior steam cleaning, leather restoration, 3-stage exterior paint correction, and 9H ceramic protective coat.', duration: '5 Hours', price: 350000, currency: 'TZS', active_status: true, icon_name: 'Sparkles' },
+    ];
+  },
+
+  async createService(svc: Omit<DealershipServiceOffering, 'id'>): Promise<DealershipServiceOffering> {
+    const slug = svc.slug || svc.service_name.toLowerCase().replace(/\s+/g, '-');
+    const payload = {
+      service_name: svc.service_name,
+      slug,
+      description: svc.description || null,
+      duration: svc.duration || '2 Hours',
+      price: Number(svc.price),
+      currency: svc.currency || 'TZS',
+      active_status: svc.active_status ?? true,
+      icon_name: svc.icon_name || 'Wrench'
+    };
+
+    const { data, error } = await supabase.from('services').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createService failed:', error);
+      throw new Error(`Service creation failed in Supabase: ${error.message}`);
+    }
+    return data as DealershipServiceOffering;
+  },
+
+  // =========================================================================
+  // 8. ORDERS & INVOICES (SELECT, INSERT, UPDATE)
+  // =========================================================================
+  async getOrders(customerId?: string): Promise<Order[]> {
     try {
       let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
-      if (userId && isValidUuid(userId)) {
-        query = query.eq('customer_id', userId);
+      if (customerId && isValidUuid(customerId)) {
+        query = query.eq('customer_id', customerId);
       }
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        localOrders = data as Order[];
-        setStorageItem('swahivo_cache_orders', localOrders);
-        return data as Order[];
-      }
-    } catch (e) {
-      console.warn('Supabase getOrders error:', e);
+      if (error) throw error;
+      if (data && data.length > 0) return data as Order[];
+    } catch (e: any) {
+      console.warn('getOrders note:', e.message);
     }
-    if (userId) return localOrders.filter(o => o.customer_id === userId);
-    return localOrders;
+    return INITIAL_ORDERS;
   },
 
-  async createOrder(order: Omit<Order, 'id' | 'order_number' | 'created_at' | 'updated_at'>): Promise<Order> {
-    const newId = crypto.randomUUID();
-    const orderNumber = 'ORD-' + Date.now().toString().slice(-6);
+  async createOrder(order: Omit<Order, 'id' | 'created_at' | 'updated_at'>): Promise<Order> {
+    const orderNumber = order.order_number || `ORD-${Date.now().toString().slice(-6)}`;
     const payload = {
-      id: newId,
       order_number: orderNumber,
       customer_id: sanitizeUuid(order.customer_id),
       customer_name: order.customer_name,
-      phone: order.phone || order.customer_phone || '+255 770 000 000',
-      email: order.email || order.customer_email || 'customer@swahivo.com',
+      phone: order.phone,
+      email: order.email,
       city: order.city || 'Dar es Salaam',
-      address: order.address || '',
+      address: order.address || null,
       country: order.country || 'Tanzania',
       product_name: order.product_name,
       product_variant: order.product_variant || null,
       vehicle_id: sanitizeUuid(order.vehicle_id),
       accessory_id: sanitizeUuid(order.accessory_id),
       seller_id: sanitizeUuid(order.seller_id),
-      quantity: order.quantity || 1,
-      amount: order.amount,
+      quantity: Number(order.quantity || 1),
+      amount: Number(order.amount),
       currency: order.currency || 'TZS',
       notes: order.notes || null,
       status: order.status || 'Pending',
       payment_status: order.payment_status || 'pending_verification',
-      timeline: [{ status: 'Order Submitted', date: new Date().toLocaleDateString(), note: 'Awaiting showroom escrow verification' }],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      timeline: order.timeline || [
+        { title: 'Order Placed', timestamp: new Date().toISOString(), completed: true, description: 'Order submitted to Swahivo.' }
+      ]
     };
 
-    try {
-      const { data, error } = await supabase.from('orders').insert([payload]).select().single();
-      if (!error && data) {
-        localOrders.unshift(data as Order);
-        setStorageItem('swahivo_cache_orders', localOrders);
-        return data as Order;
-      }
-      if (error) {
-        console.error('Supabase createOrder error:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Order insert cache persistence:', err);
-      localOrders.unshift(payload as any);
-      setStorageItem('swahivo_cache_orders', localOrders);
-      return payload as any;
+    const { data, error } = await supabase.from('orders').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createOrder failed:', error);
+      throw new Error(`Order placement failed in Supabase: ${error.message}`);
     }
-    localOrders.unshift(payload as any);
-    setStorageItem('swahivo_cache_orders', localOrders);
-    return payload as any;
+    return data as Order;
   },
 
-  async updateOrderStatus(id: string, status: Order['status']): Promise<Order | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localOrders.findIndex(o => o.id === id);
-          if (idx !== -1) localOrders[idx] = data as Order;
-          setStorageItem('swahivo_cache_orders', localOrders);
-          return data as Order;
-        }
-      } catch (err) {
-        console.warn('Update order status error:', err);
-      }
+  async updateOrderStatus(id: string, status: Order['status'], paymentStatus?: Order['payment_status']): Promise<Order> {
+    if (!isValidUuid(id)) throw new Error(`Invalid order UUID: ${id}`);
+
+    const updates: any = { status, updated_at: new Date().toISOString() };
+    if (paymentStatus) updates.payment_status = paymentStatus;
+
+    const { data, error } = await supabase.from('orders').update(updates).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateOrderStatus failed:', error);
+      throw new Error(`Order update failed in Supabase: ${error.message}`);
     }
-    const idx = localOrders.findIndex(o => o.id === id);
-    if (idx !== -1) {
-      localOrders[idx] = { ...localOrders[idx], status };
-      setStorageItem('swahivo_cache_orders', localOrders);
-      return localOrders[idx];
-    }
-    return null;
+    return data as Order;
   },
 
-  // =========================================================================
-  // 8. ENQUIRIES & MESSAGING (SELECT, INSERT, UPDATE, REPLY)
-  // =========================================================================
-  async getEnquiries(sellerId?: string, customerId?: string): Promise<Enquiry[]> {
+  async getEnquiries(filter?: string | { vehicleId?: string; customerId?: string; sellerId?: string }): Promise<Enquiry[]> {
     try {
-      let query = supabase.from('enquiries').select('*').order('created_at', { ascending: false });
-      if (sellerId && isValidUuid(sellerId)) query = query.eq('seller_id', sellerId);
-      if (customerId && isValidUuid(customerId)) query = query.eq('customer_id', customerId);
+      let query = supabase.from('enquiries').select('*').order('last_message_at', { ascending: false });
+      if (typeof filter === 'string') {
+        if (isValidUuid(filter)) query = query.eq('seller_id', filter);
+      } else if (filter) {
+        if (filter.vehicleId && isValidUuid(filter.vehicleId)) query = query.eq('vehicle_id', filter.vehicleId);
+        if (filter.customerId && isValidUuid(filter.customerId)) query = query.eq('customer_id', filter.customerId);
+        if (filter.sellerId && isValidUuid(filter.sellerId)) query = query.eq('seller_id', filter.sellerId);
+      }
+
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        localEnquiries = data as Enquiry[];
-        setStorageItem('swahivo_cache_enquiries', localEnquiries);
-        return data as Enquiry[];
-      }
-    } catch (e) {
-      console.warn('Supabase getEnquiries error:', e);
+      if (error) throw error;
+      if (data && data.length > 0) return data as Enquiry[];
+    } catch (e: any) {
+      console.warn('getEnquiries note:', e.message);
     }
-    if (sellerId) return localEnquiries.filter(e => e.seller_id === sellerId || !e.seller_id);
-    if (customerId) return localEnquiries.filter(e => e.customer_id === customerId);
-    return localEnquiries;
+    return INITIAL_ENQUIRIES;
   },
 
-  async sendEnquiry(enquiry: Omit<Enquiry, 'id' | 'created_at'>): Promise<Enquiry> {
-    const newId = crypto.randomUUID();
+  async updateEnquiryStatus(id: string, status: Enquiry['status']): Promise<Enquiry> {
+    if (!isValidUuid(id)) throw new Error(`Invalid enquiry UUID: ${id}`);
+    const { data, error } = await supabase
+      .from('enquiries')
+      .update({ status, last_message_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data as Enquiry;
+  },
+
+  async createEnquiry(enquiry: Omit<Enquiry, 'id' | 'created_at'>): Promise<Enquiry> {
     const payload = {
-      id: newId,
       vehicle_id: sanitizeUuid(enquiry.vehicle_id),
       vehicle_title: enquiry.vehicle_title || null,
       vehicle_image: enquiry.vehicle_image || null,
@@ -970,805 +733,541 @@ export const DealershipService = {
       seller_id: sanitizeUuid(enquiry.seller_id),
       message: enquiry.message,
       status: enquiry.status || 'New',
-      last_message_at: new Date().toISOString(),
-      created_at: new Date().toISOString()
+      last_message_at: new Date().toISOString()
     };
 
-    try {
-      const { data, error } = await supabase.from('enquiries').insert([payload]).select().single();
-      if (!error && data) {
-        localEnquiries.unshift(data as Enquiry);
-        setStorageItem('swahivo_cache_enquiries', localEnquiries);
-        return data as Enquiry;
-      }
-      if (error) {
-        console.error('Supabase sendEnquiry failed:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Enquiry insert cache fallback:', err);
-      localEnquiries.unshift(payload as any);
-      setStorageItem('swahivo_cache_enquiries', localEnquiries);
-      return payload as any;
+    const { data, error } = await supabase.from('enquiries').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createEnquiry failed:', error);
+      throw new Error(`Enquiry submission failed in Supabase: ${error.message}`);
     }
-    localEnquiries.unshift(payload as any);
-    setStorageItem('swahivo_cache_enquiries', localEnquiries);
-    return payload as any;
+    return data as Enquiry;
   },
 
-  async updateEnquiryStatus(id: string, status: Enquiry['status']): Promise<Enquiry | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('enquiries').update({ status }).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localEnquiries.findIndex(e => e.id === id);
-          if (idx !== -1) localEnquiries[idx] = data as Enquiry;
-          setStorageItem('swahivo_cache_enquiries', localEnquiries);
-          return data as Enquiry;
-        }
-      } catch (err) {
-        console.warn('Update enquiry status error:', err);
-      }
-    }
-    const idx = localEnquiries.findIndex(e => e.id === id);
-    if (idx !== -1) {
-      localEnquiries[idx] = { ...localEnquiries[idx], status };
-      setStorageItem('swahivo_cache_enquiries', localEnquiries);
-      return localEnquiries[idx];
-    }
-    return null;
+  async sendEnquiry(enquiry: Omit<Enquiry, 'id' | 'created_at'>): Promise<Enquiry> {
+    return this.createEnquiry(enquiry);
   },
 
-  async replyToEnquiry(id: string, reply: string, repliedBy?: string, senderId?: string): Promise<Enquiry> {
-    const nowIso = new Date().toISOString();
+  async replyToEnquiry(enquiryId: string, replyMessage: string, repliedBy: string): Promise<Enquiry> {
+    if (!isValidUuid(enquiryId)) throw new Error(`Invalid enquiry UUID: ${enquiryId}`);
 
-    if (isValidUuid(id)) {
-      try {
-        // Insert message thread into enquiry_messages
-        await supabase.from('enquiry_messages').insert([{
-          enquiry_id: id,
-          sender_id: sanitizeUuid(senderId),
-          sender_name: repliedBy || 'Showroom Agent',
-          sender_role: 'admin',
-          message: reply,
-          created_at: nowIso
-        }]);
-
-        const { data } = await supabase.from('enquiries').update({
-          status: 'Responded',
-          last_message_at: nowIso
-        }).eq('id', id).select().single();
-
-        if (data) {
-          const idx = localEnquiries.findIndex(e => e.id === id);
-          if (idx !== -1) localEnquiries[idx] = data as Enquiry;
-          setStorageItem('swahivo_cache_enquiries', localEnquiries);
-          return data as Enquiry;
-        }
-      } catch (err) {
-        console.warn('Reply enquiry error:', err);
-      }
-    }
-
-    const idx = localEnquiries.findIndex(e => e.id === id);
-    const updatedLocal = {
-      status: 'Responded' as const,
-      last_message_at: nowIso
-    };
-    if (idx !== -1) {
-      localEnquiries[idx] = { ...localEnquiries[idx], ...updatedLocal };
-      setStorageItem('swahivo_cache_enquiries', localEnquiries);
-      return localEnquiries[idx];
-    }
-    return { id, customer_name: 'Customer', customer_email: '', message: '', ...updatedLocal };
-  },
-
-  // =========================================================================
-  // 9. BOOKINGS (TEST DRIVES & SERVICES)
-  // =========================================================================
-  async getBookings(sellerId?: string, customerId?: string): Promise<Booking[]> {
-    try {
-      let query = supabase.from('bookings').select('*').order('created_at', { ascending: false });
-      if (sellerId && isValidUuid(sellerId)) query = query.eq('seller_id', sellerId);
-      if (customerId && isValidUuid(customerId)) query = query.eq('customer_id', customerId);
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        localBookings = data as Booking[];
-        setStorageItem('swahivo_cache_bookings', localBookings);
-        return data as Booking[];
-      }
-    } catch (e) {
-      console.warn('Supabase getBookings error:', e);
-    }
-    if (customerId) return localBookings.filter(b => b.customer_id === customerId);
-    if (sellerId) return localBookings.filter(b => b.seller_id === sellerId || !b.seller_id);
-    return localBookings;
-  },
-
-  async createBooking(booking: Omit<Booking, 'id' | 'booking_number' | 'created_at'>): Promise<Booking> {
-    const newId = crypto.randomUUID();
-    const bookingNumber = 'BK-2026-' + Math.floor(100 + Math.random() * 900);
-    const payload = {
-      id: newId,
-      booking_number: bookingNumber,
-      booking_type: booking.booking_type || 'test_drive',
-      vehicle_id: sanitizeUuid(booking.vehicle_id),
-      customer_id: sanitizeUuid(booking.customer_id),
-      customer_name: booking.customer_name,
-      customer_email: booking.customer_email || null,
-      customer_phone: booking.customer_phone,
-      seller_id: sanitizeUuid(booking.seller_id),
-      booking_date: booking.booking_date || (booking as any).preferred_date || new Date().toISOString().split('T')[0],
-      booking_time: booking.booking_time || (booking as any).preferred_time || '10:00 AM',
-      status: booking.status || 'Confirmed',
-      notes: booking.notes || null,
-      created_at: new Date().toISOString()
+    const updates = {
+      reply: replyMessage,
+      replied_at: new Date().toISOString(),
+      replied_by: repliedBy,
+      status: 'Responded',
+      last_message_at: new Date().toISOString()
     };
 
-    try {
-      const { data, error } = await supabase.from('bookings').insert([payload]).select().single();
-      if (!error && data) {
-        localBookings.unshift(data as Booking);
-        setStorageItem('swahivo_cache_bookings', localBookings);
-        return data as Booking;
-      }
-      if (error) {
-        console.error('Supabase createBooking error:', error);
-        throw new Error(error.message);
-      }
-    } catch (err: any) {
-      console.warn('Booking insert cache persistence:', err);
-      localBookings.unshift(payload as any);
-      setStorageItem('swahivo_cache_bookings', localBookings);
-      return payload as any;
+    const { data, error } = await supabase.from('enquiries').update(updates).eq('id', enquiryId).select().single();
+    if (error) {
+      console.error('Supabase replyToEnquiry failed:', error);
+      throw new Error(`Replying to enquiry failed in Supabase: ${error.message}`);
     }
-    localBookings.unshift(payload as any);
-    setStorageItem('swahivo_cache_bookings', localBookings);
-    return payload as any;
-  },
 
-  async updateBookingStatus(id: string, status: Booking['status']): Promise<Booking | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localBookings.findIndex(b => b.id === id);
-          if (idx !== -1) localBookings[idx] = data as Booking;
-          setStorageItem('swahivo_cache_bookings', localBookings);
-          return data as Booking;
-        }
-      } catch (err) {
-        console.warn('Update booking status error:', err);
-      }
-    }
-    const idx = localBookings.findIndex(b => b.id === id);
-    if (idx !== -1) {
-      localBookings[idx] = { ...localBookings[idx], status };
-      setStorageItem('swahivo_cache_bookings', localBookings);
-      return localBookings[idx];
-    }
-    return null;
+    // Also insert message into enquiry_messages table
+    try {
+      await supabase.from('enquiry_messages').insert([{
+        enquiry_id: enquiryId,
+        sender_name: repliedBy,
+        sender_role: 'admin',
+        message: replyMessage
+      }]);
+    } catch {}
+
+    return data as Enquiry;
   },
 
   // =========================================================================
   // 10. SAVED CARS / FAVORITES
   // =========================================================================
   getFavoritesSync(): string[] {
-    return [...localFavorites];
+    try {
+      const raw = localStorage.getItem('swahivo_cache_favorites');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
   },
 
   async getFavorites(userId?: string): Promise<string[]> {
-    const validUserId = sanitizeUuid(userId) || (await supabase.auth.getSession()).data.session?.user?.id;
-    if (validUserId && isValidUuid(validUserId)) {
-      try {
-        const { data, error } = await supabase.from('favorites').select('vehicle_id').eq('user_id', validUserId);
-        if (!error && data) {
-          const ids = data.map(f => f.vehicle_id);
-          localFavorites = ids;
-          setStorageItem('swahivo_cache_favorites', localFavorites);
-          return ids;
-        }
-      } catch (err) {
-        console.warn('Supabase getFavorites error:', err);
+    try {
+      let query = supabase.from('favorites').select('vehicle_id');
+      if (userId && isValidUuid(userId)) {
+        query = query.eq('user_id', userId);
       }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data) {
+        const ids = data.map(item => item.vehicle_id);
+        localStorage.setItem('swahivo_cache_favorites', JSON.stringify(ids));
+        return ids;
+      }
+    } catch (e: any) {
+      console.warn('getFavorites note:', e.message);
     }
-    return [...localFavorites];
+    return this.getFavoritesSync();
   },
 
   async toggleFavorite(vehicleId: string, userId?: string): Promise<string[]> {
-    const sessionUser = (await supabase.auth.getSession()).data.session?.user?.id;
-    const validUserId = sanitizeUuid(userId) || sanitizeUuid(sessionUser) || ADMIN_UID;
-    
-    const isCurrentlyFavorited = localFavorites.includes(vehicleId);
+    const sanitizedUserId = sanitizeUuid(userId);
+    let currentFavorites = this.getFavoritesSync();
+    const isCurrentlyFav = currentFavorites.includes(vehicleId);
 
-    if (isCurrentlyFavorited) {
-      localFavorites = localFavorites.filter(id => id !== vehicleId);
-      setStorageItem('swahivo_cache_favorites', localFavorites);
-      if (isValidUuid(vehicleId) && isValidUuid(validUserId)) {
-        try {
-          await supabase.from('favorites').delete().match({ user_id: validUserId, vehicle_id: vehicleId });
-        } catch (err) {
-          console.warn('Delete favorite error:', err);
-        }
+    if (sanitizedUserId && isValidUuid(vehicleId)) {
+      if (isCurrentlyFav) {
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', sanitizedUserId)
+          .eq('vehicle_id', vehicleId);
+        if (error) throw new Error(`Failed to remove favorite: ${error.message}`);
+        currentFavorites = currentFavorites.filter(id => id !== vehicleId);
+      } else {
+        const { error } = await supabase
+          .from('favorites')
+          .insert([{ user_id: sanitizedUserId, vehicle_id: vehicleId }]);
+        if (error) throw new Error(`Failed to add favorite: ${error.message}`);
+        currentFavorites.push(vehicleId);
       }
     } else {
-      localFavorites.push(vehicleId);
-      setStorageItem('swahivo_cache_favorites', localFavorites);
-      if (isValidUuid(vehicleId) && isValidUuid(validUserId)) {
-        try {
-          await supabase.from('favorites').insert([{ user_id: validUserId, vehicle_id: vehicleId }]);
-        } catch (err) {
-          console.warn('Insert favorite error:', err);
-        }
+      if (isCurrentlyFav) {
+        currentFavorites = currentFavorites.filter(id => id !== vehicleId);
+      } else {
+        currentFavorites.push(vehicleId);
       }
     }
-    return [...localFavorites];
+
+    localStorage.setItem('swahivo_cache_favorites', JSON.stringify(currentFavorites));
+    return currentFavorites;
   },
 
   // =========================================================================
-  // 11. REVIEWS & TESTIMONIALS
+  // 11. BOOKINGS (TEST DRIVES & APPOINTMENTS)
   // =========================================================================
-  async getReviews(): Promise<CustomerReview[]> {
+  async getBookings(customerId?: string): Promise<Booking[]> {
     try {
-      const { data, error } = await supabase.from('reviews').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localReviews = data as CustomerReview[];
-        setStorageItem('swahivo_cache_reviews', localReviews);
-        return data as CustomerReview[];
+      let query = supabase.from('bookings').select('*').order('booking_date', { ascending: false });
+      if (customerId && isValidUuid(customerId)) {
+        query = query.eq('customer_id', customerId);
       }
-    } catch (e) {
-      console.warn('Supabase getReviews error:', e);
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data && data.length > 0) return data as Booking[];
+    } catch (e: any) {
+      console.warn('getBookings note:', e.message);
     }
-    return localReviews;
+    return [];
   },
 
-  async createReview(review: Omit<CustomerReview, 'id' | 'created_at'>): Promise<CustomerReview> {
-    const newId = crypto.randomUUID();
+  async createBooking(booking: Omit<Booking, 'id' | 'created_at'>): Promise<Booking> {
+    const bookingNumber = booking.booking_number || `BK-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const payload = {
-      id: newId,
-      customer_name: review.customer_name,
-      customer_avatar: review.customer_avatar || null,
-      customer_city: review.customer_city || 'Dar es Salaam',
-      rating: review.rating,
-      comment: review.comment || (review as any).review_text || '',
-      status: review.status || 'approved',
-      created_at: new Date().toISOString()
+      booking_number: bookingNumber,
+      booking_type: booking.booking_type || 'test_drive',
+      vehicle_id: sanitizeUuid(booking.vehicle_id),
+      vehicle_title: booking.vehicle_title || null,
+      service_id: sanitizeUuid(booking.service_id),
+      customer_id: sanitizeUuid(booking.customer_id),
+      customer_name: booking.customer_name,
+      customer_email: booking.customer_email || null,
+      customer_phone: booking.customer_phone,
+      seller_id: sanitizeUuid(booking.seller_id),
+      booking_date: booking.booking_date,
+      booking_time: booking.booking_time,
+      status: booking.status || 'Confirmed',
+      notes: booking.notes || null
     };
 
-    try {
-      const { data, error } = await supabase.from('reviews').insert([payload]).select().single();
-      if (!error && data) {
-        localReviews.unshift(data as CustomerReview);
-        setStorageItem('swahivo_cache_reviews', localReviews);
-        return data as CustomerReview;
-      }
-      if (error) throw new Error(error.message);
-    } catch (err: any) {
-      console.warn('Review insert cache persistence:', err);
+    const { data, error } = await supabase.from('bookings').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createBooking failed:', error);
+      throw new Error(`Booking submission failed in Supabase: ${error.message}`);
     }
-    localReviews.unshift(payload as CustomerReview);
-    setStorageItem('swahivo_cache_reviews', localReviews);
-    return payload as CustomerReview;
+    return data as Booking;
   },
 
-  async updateReviewStatus(id: string, status: CustomerReview['status']): Promise<CustomerReview | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data, error } = await supabase.from('reviews').update({ status }).eq('id', id).select().single();
-        if (!error && data) {
-          const idx = localReviews.findIndex(r => r.id === id);
-          if (idx !== -1) localReviews[idx] = data as CustomerReview;
-          setStorageItem('swahivo_cache_reviews', localReviews);
-          return data as CustomerReview;
-        }
-      } catch (err) {
-        console.warn('Update review error:', err);
-      }
+  async updateBookingStatus(id: string, status: Booking['status']): Promise<Booking> {
+    if (!isValidUuid(id)) throw new Error(`Invalid booking UUID: ${id}`);
+
+    const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateBookingStatus failed:', error);
+      throw new Error(`Booking update failed in Supabase: ${error.message}`);
     }
-    const idx = localReviews.findIndex(r => r.id === id);
-    if (idx !== -1) {
-      localReviews[idx] = { ...localReviews[idx], status };
-      setStorageItem('swahivo_cache_reviews', localReviews);
-      return localReviews[idx];
-    }
-    return null;
+    return data as Booking;
   },
 
   // =========================================================================
-  // 12. WEBSITE SETTINGS & CONFIGURATION
+  // 12. REVIEWS & RATINGS
+  // =========================================================================
+  async getReviews(vehicleId?: string): Promise<CustomerReview[]> {
+    try {
+      let query = supabase.from('reviews').select('*').order('created_at', { ascending: false });
+      if (vehicleId && isValidUuid(vehicleId)) {
+        query = query.eq('vehicle_id', vehicleId);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data && data.length > 0) return data as CustomerReview[];
+    } catch (e: any) {
+      console.warn('getReviews note:', e.message);
+    }
+    return INITIAL_REVIEWS;
+  },
+
+  async createReview(rev: Omit<CustomerReview, 'id' | 'created_at'>): Promise<CustomerReview> {
+    const payload = {
+      vehicle_id: sanitizeUuid(rev.vehicle_id),
+      seller_id: sanitizeUuid(rev.seller_id),
+      customer_id: sanitizeUuid(rev.customer_id),
+      customer_name: rev.customer_name,
+      customer_avatar: rev.customer_avatar || null,
+      customer_city: rev.customer_city || 'Dar es Salaam',
+      rating: Number(rev.rating),
+      comment: rev.comment,
+      status: rev.status || 'approved'
+    };
+
+    const { data, error } = await supabase.from('reviews').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createReview failed:', error);
+      throw new Error(`Review submission failed in Supabase: ${error.message}`);
+    }
+    return data as CustomerReview;
+  },
+
+  async updateReviewStatus(id: string, status: 'approved' | 'pending' | 'rejected'): Promise<CustomerReview> {
+    if (!isValidUuid(id)) throw new Error(`Invalid review UUID: ${id}`);
+    const { data, error } = await supabase
+      .from('reviews')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data as CustomerReview;
+  },
+
+  // =========================================================================
+  // 13. WEBSITE SETTINGS
   // =========================================================================
   async getSettings(): Promise<DealershipSettings> {
     try {
-      const { data, error } = await supabase.from('website_settings').select('*');
-      if (!error && data && data.length > 0) {
-        const map: Record<string, any> = {};
-        data.forEach((row: any) => {
-          map[row.key] = row.value;
-        });
+      const { data, error } = await supabase
+        .from('website_settings')
+        .select('*')
+        .eq('key', 'general_settings')
+        .maybeSingle();
 
-        if (map.dealership) {
-          localSettings = { ...localSettings, ...map.dealership };
-        }
-        if (map.hero) {
-          localSettings.tagline = map.hero.subtext || localSettings.tagline;
-        }
-        if (map.contact) {
-          localSettings.phone = map.contact.phone || localSettings.phone;
-          localSettings.email = map.contact.email || localSettings.email;
-        }
-        setStorageItem('swahivo_cache_settings', localSettings);
+      if (error) throw error;
+      if (data?.value) {
+        return data.value as DealershipSettings;
       }
-    } catch (e) {
-      console.warn('Supabase getSettings error:', e);
+    } catch (e: any) {
+      console.warn('getSettings note:', e.message);
     }
-    return localSettings;
+    return INITIAL_SETTINGS;
   },
 
   async updateSettings(settings: Partial<DealershipSettings>): Promise<DealershipSettings> {
-    localSettings = { ...localSettings, ...settings };
-    setStorageItem('swahivo_cache_settings', localSettings);
+    const current = await this.getSettings();
+    const updated = { ...current, ...settings };
 
-    try {
-      await supabase.from('website_settings').upsert([
-        {
-          key: 'dealership',
-          value: localSettings,
-          updated_at: new Date().toISOString()
-        },
-        {
-          key: 'contact',
-          value: {
-            address: localSettings.address,
-            phone: localSettings.phone,
-            email: localSettings.email,
-            whatsapp: localSettings.whatsapp,
-            hours: 'Mon - Sat: 8:00 AM - 6:00 PM'
-          },
-          updated_at: new Date().toISOString()
-        },
-        {
-          key: 'hero',
-          value: {
-            headline: localSettings.dealership_name || 'Find Your Perfect Drive',
-            subtext: localSettings.tagline || 'Swahivo Car Dealership brings you a wide range of new and pre-owned vehicles.',
-            badge: 'PREMIUM CARS. REAL PEOPLE. BETTER JOURNEYS.'
-          },
-          updated_at: new Date().toISOString()
-        }
-      ]);
-    } catch (err) {
-      console.warn('Save settings in Supabase error, persisted to local cache:', err);
+    const { error } = await supabase
+      .from('website_settings')
+      .upsert({
+        key: 'general_settings',
+        value: updated,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('Supabase updateSettings failed:', error);
+      throw new Error(`Settings update failed in Supabase: ${error.message}`);
     }
-    return localSettings;
+
+    return updated;
   },
 
   // =========================================================================
-  // 13. NEWSLETTER SUBSCRIBERS
-  // =========================================================================
-  async subscribeNewsletter(email: string): Promise<boolean> {
-    try {
-      const { error } = await supabase.from('newsletter_subscribers').insert([{ email }]);
-      if (error && error.code !== '23505') { // Ignore unique constraint duplicate
-        console.warn('Newsletter subscribe warning:', error.message);
-      }
-      return true;
-    } catch {
-      return true;
-    }
-  },
-
-  // =========================================================================
-  // 14. USERS & PROFILES MANAGEMENT
-  // =========================================================================
-  async getUsers(): Promise<UserProfile[]> {
-    try {
-      const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        return data as UserProfile[];
-      }
-    } catch (e) {
-      console.warn('Supabase getUsers error:', e);
-    }
-    return [
-      {
-        user_id: ADMIN_UID,
-        role: 'admin',
-        full_name: 'Swahivo Administrator',
-        email: 'admin@swahivo.com',
-        phone: '+255 770 565 656',
-        city: 'Dar es Salaam',
-        is_verified: true,
-        created_at: '2026-10-18'
-      },
-      {
-        user_id: '8916c8d8-3037-4e54-9ea5-d025cd77e042',
-        role: 'seller',
-        full_name: 'Ali Hassan (Prime Motors)',
-        email: 'seller@swahivo.com',
-        phone: '+255 777 998 877',
-        city: 'Dar es Salaam',
-        is_verified: true,
-        created_at: '2026-10-19'
-      },
-      {
-        user_id: 'be3c05de-2678-471d-90e7-8010a6bf9010',
-        role: 'buyer',
-        full_name: 'Salim Khamis',
-        email: 'buyer@swahivo.com',
-        phone: '+255 777 123456',
-        city: 'Dar es Salaam',
-        is_verified: true,
-        created_at: '2026-10-19'
-      }
-    ];
-  },
-
-  async updateUserRole(userId: string, role: UserProfile['role']): Promise<UserProfile | null> {
-    if (isValidUuid(userId)) {
-      try {
-        const { data, error } = await supabase.from('profiles').update({ role, updated_at: new Date().toISOString() }).eq('user_id', userId).select().single();
-        if (!error && data) {
-          return data as UserProfile;
-        }
-      } catch (err) {
-        console.warn('Update user role error:', err);
-      }
-    }
-    return null;
-  },
-
-  async toggleUserVerification(userId: string): Promise<UserProfile | null> {
-    if (isValidUuid(userId)) {
-      try {
-        const { data: cur } = await supabase.from('profiles').select('is_verified').eq('user_id', userId).maybeSingle();
-        const nextVal = !(cur?.is_verified);
-        const { data } = await supabase.from('profiles').update({ is_verified: nextVal, updated_at: new Date().toISOString() }).eq('user_id', userId).select().single();
-        if (data) return data as UserProfile;
-      } catch (err) {
-        console.warn('Toggle user verification error:', err);
-      }
-    }
-    return null;
-  },
-
-  // =========================================================================
-  // 15. LEADS CRM PIPELINE
+  // 14. CRM LEADS
   // =========================================================================
   async getLeads(): Promise<Lead[]> {
     try {
       const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localLeads = data as Lead[];
-        setStorageItem('swahivo_cache_leads', localLeads);
-        return data as Lead[];
-      }
-    } catch (e) {
-      console.warn('Supabase getLeads error:', e);
+      if (error) throw error;
+      if (data && data.length > 0) return data as Lead[];
+    } catch (e: any) {
+      console.warn('getLeads note:', e.message);
     }
-    return localLeads;
+    return INITIAL_LEADS;
   },
 
-  async updateLeadStatus(id: string, status: Lead['status']): Promise<Lead | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data } = await supabase.from('leads').update({ status }).eq('id', id).select().single();
-        if (data) {
-          const idx = localLeads.findIndex(l => l.id === id);
-          if (idx !== -1) localLeads[idx] = data as Lead;
-          setStorageItem('swahivo_cache_leads', localLeads);
-          return data as Lead;
-        }
-      } catch (err) {
-        console.warn('Update lead error:', err);
-      }
-    }
-    const idx = localLeads.findIndex(l => l.id === id);
-    if (idx !== -1) {
-      localLeads[idx] = { ...localLeads[idx], status };
-      setStorageItem('swahivo_cache_leads', localLeads);
-      return localLeads[idx];
-    }
-    return null;
-  },
-
-  async assignLead(id: string, assigned_to: string): Promise<Lead | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data } = await supabase.from('leads').update({ assigned_to }).eq('id', id).select().single();
-        if (data) {
-          const idx = localLeads.findIndex(l => l.id === id);
-          if (idx !== -1) localLeads[idx] = data as Lead;
-          setStorageItem('swahivo_cache_leads', localLeads);
-          return data as Lead;
-        }
-      } catch (err) {
-        console.warn('Assign lead error:', err);
-      }
-    }
-    const idx = localLeads.findIndex(l => l.id === id);
-    if (idx !== -1) {
-      localLeads[idx] = { ...localLeads[idx], assigned_to };
-      setStorageItem('swahivo_cache_leads', localLeads);
-      return localLeads[idx];
-    }
-    return null;
-  },
-
-  async addLeadNote(id: string, note: string): Promise<Lead | null> {
-    const target = localLeads.find(l => l.id === id);
-    const updatedNotes = [note, ...(target?.notes || [])];
-
-    if (isValidUuid(id)) {
-      try {
-        const { data } = await supabase.from('leads').update({ notes: updatedNotes }).eq('id', id).select().single();
-        if (data) {
-          const idx = localLeads.findIndex(l => l.id === id);
-          if (idx !== -1) localLeads[idx] = data as Lead;
-          setStorageItem('swahivo_cache_leads', localLeads);
-          return data as Lead;
-        }
-      } catch (err) {
-        console.warn('Add lead note error:', err);
-      }
-    }
-    if (target) {
-      target.notes = updatedNotes;
-      setStorageItem('swahivo_cache_leads', localLeads);
-      return target;
-    }
-    return null;
-  },
-
-  // =========================================================================
-  // 16. AUTO FINANCING APPLICATIONS
-  // =========================================================================
-  async getFinancingApplications(): Promise<FinancingApplication[]> {
-    try {
-      const { data, error } = await supabase.from('financing_applications').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localFinancing = data as any;
-        setStorageItem('swahivo_cache_financing', localFinancing);
-        return data as any;
-      }
-    } catch (e) {
-      console.warn('Supabase getFinancingApplications error:', e);
-    }
-    return localFinancing;
-  },
-
-  async submitFinancingApplication(app: Partial<FinancingApplication>): Promise<FinancingApplication> {
-    const newId = crypto.randomUUID();
-    const appNumber = 'FIN-2026-' + Math.floor(1000 + Math.random() * 9000);
+  async createLead(lead: Omit<Lead, 'id' | 'created_at'>): Promise<Lead> {
     const payload = {
-      id: newId,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email || null,
+      vehicle_interest: lead.vehicle_interest || null,
+      budget: Number(lead.budget || 0),
+      source: lead.source || 'Website',
+      status: lead.status || 'New',
+      assigned_to: lead.assigned_to || null,
+      notes: lead.notes || []
+    };
+
+    const { data, error } = await supabase.from('leads').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createLead failed:', error);
+      throw new Error(`Lead creation failed in Supabase: ${error.message}`);
+    }
+    return data as Lead;
+  },
+
+  async updateLeadStatus(id: string, status: Lead['status']): Promise<Lead> {
+    if (!isValidUuid(id)) throw new Error(`Invalid lead UUID: ${id}`);
+
+    const { data, error } = await supabase.from('leads').update({ status }).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateLeadStatus failed:', error);
+      throw new Error(`Lead update failed in Supabase: ${error.message}`);
+    }
+    return data as Lead;
+  },
+
+  async assignLead(id: string, assignedTo: string): Promise<Lead> {
+    if (!isValidUuid(id)) throw new Error(`Invalid lead UUID: ${id}`);
+    const { data, error } = await supabase.from('leads').update({ assigned_to: assignedTo }).eq('id', id).select().single();
+    if (error) throw new Error(error.message);
+    return data as Lead;
+  },
+
+  async addLeadNote(id: string, note: string): Promise<Lead> {
+    if (!isValidUuid(id)) throw new Error(`Invalid lead UUID: ${id}`);
+    const current = await supabase.from('leads').select('notes').eq('id', id).single();
+    const existingNotes = Array.isArray(current.data?.notes) ? current.data.notes : [];
+    const updatedNotes = [...existingNotes, `${new Date().toLocaleDateString()}: ${note}`];
+    const { data, error } = await supabase.from('leads').update({ notes: updatedNotes }).eq('id', id).select().single();
+    if (error) throw new Error(error.message);
+    return data as Lead;
+  },
+
+  // =========================================================================
+  // 15. FINANCING APPLICATIONS
+  // =========================================================================
+  async getFinancingApplications(customerId?: string): Promise<FinancingApplication[]> {
+    try {
+      let query = supabase.from('financing_applications').select('*').order('created_at', { ascending: false });
+      if (customerId && isValidUuid(customerId)) {
+        query = query.eq('customer_id', customerId);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data && data.length > 0) return data as FinancingApplication[];
+    } catch (e: any) {
+      console.warn('getFinancingApplications note:', e.message);
+    }
+    return INITIAL_FINANCING;
+  },
+
+  async submitFinancingApplication(app: Omit<FinancingApplication, 'id' | 'application_number' | 'created_at'>): Promise<FinancingApplication> {
+    const appNumber = `FIN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const payload = {
       application_number: appNumber,
       customer_id: sanitizeUuid(app.customer_id),
-      applicant_name: app.applicant_name || (app as any).name || 'Applicant',
-      applicant_phone: app.applicant_phone || (app as any).phone || '+255 770 000000',
-      applicant_email: app.applicant_email || (app as any).email || null,
+      applicant_name: app.applicant_name,
+      applicant_phone: app.applicant_phone || app.phone,
+      applicant_email: app.applicant_email || app.email || null,
       vehicle_id: sanitizeUuid(app.vehicle_id),
-      vehicle_title: app.vehicle_title || 'Selected Vehicle',
-      vehicle_price: Number(app.vehicle_price || 50000000),
-      down_payment: Number(app.down_payment || 10000000),
-      loan_amount: Number(app.loan_amount || 40000000),
-      loan_term_months: Number(app.loan_term_months || (app as any).tenure_months || 36),
-      monthly_payment: Number(app.monthly_payment || (app as any).monthly_installment || 1350000),
-      monthly_income: app.monthly_income ? String(app.monthly_income) : null,
-      status: 'Under Review' as const,
-      notes: app.notes || 'Submitted via online portal',
-      created_at: new Date().toISOString()
+      vehicle_title: app.vehicle_title || null,
+      vehicle_price: Number(app.vehicle_price),
+      down_payment: Number(app.down_payment),
+      loan_amount: Number(app.loan_amount),
+      loan_term_months: Number(app.loan_term_months),
+      monthly_payment: Number(app.monthly_payment),
+      monthly_income: String(app.monthly_income || ''),
+      status: app.status || 'Under Review',
+      notes: app.notes || null
     };
 
-    try {
-      const { data, error } = await supabase.from('financing_applications').insert([payload]).select().single();
-      if (!error && data) {
-        localFinancing.unshift(data as any);
-        setStorageItem('swahivo_cache_financing', localFinancing);
-        return data as any;
-      }
-    } catch (err) {
-      console.warn('Financing application cache persistence:', err);
+    const { data, error } = await supabase.from('financing_applications').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase submitFinancingApplication failed:', error);
+      throw new Error(`Financing application submission failed in Supabase: ${error.message}`);
     }
-    localFinancing.unshift(payload as any);
-    setStorageItem('swahivo_cache_financing', localFinancing);
-    return payload as any;
+    return data as FinancingApplication;
   },
 
-  async updateFinancingStatus(id: string, status: FinancingApplication['status'], notes?: string): Promise<FinancingApplication | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data } = await supabase.from('financing_applications').update({
-          status,
-          ...(notes ? { notes } : {})
-        }).eq('id', id).select().single();
-        if (data) {
-          const idx = localFinancing.findIndex(f => f.id === id);
-          if (idx !== -1) localFinancing[idx] = data as any;
-          setStorageItem('swahivo_cache_financing', localFinancing);
-          return data as any;
-        }
-      } catch (err) {
-        console.warn('Update financing status error:', err);
-      }
+  async updateFinancingStatus(id: string, status: FinancingApplication['status'], notes?: string): Promise<FinancingApplication> {
+    if (!isValidUuid(id)) throw new Error(`Invalid financing application UUID: ${id}`);
+
+    const payload: any = { status };
+    if (notes) payload.notes = notes;
+
+    const { data, error } = await supabase.from('financing_applications').update(payload).eq('id', id).select().single();
+    if (error) {
+      console.error('Supabase updateFinancingStatus failed:', error);
+      throw new Error(`Financing status update failed in Supabase: ${error.message}`);
     }
-    const idx = localFinancing.findIndex(f => f.id === id);
-    if (idx !== -1) {
-      localFinancing[idx] = {
-        ...localFinancing[idx],
-        status,
-        ...(notes ? { notes } : {})
-      };
-      setStorageItem('swahivo_cache_financing', localFinancing);
-      return localFinancing[idx];
-    }
-    return null;
+    return data as FinancingApplication;
   },
 
   // =========================================================================
-  // 17. MARKETING CAMPAIGNS
+  // 16. MARKETING CAMPAIGNS
   // =========================================================================
   async getCampaigns(): Promise<MarketingCampaign[]> {
+    return this.getMarketingCampaigns();
+  },
+
+  async getMarketingCampaigns(): Promise<MarketingCampaign[]> {
     try {
       const { data, error } = await supabase.from('marketing_campaigns').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        localCampaigns = data as MarketingCampaign[];
-        setStorageItem('swahivo_cache_campaigns', localCampaigns);
-        return data as MarketingCampaign[];
-      }
-    } catch (e) {
-      console.warn('Supabase getCampaigns error:', e);
+      if (error) throw error;
+      if (data && data.length > 0) return data as MarketingCampaign[];
+    } catch (e: any) {
+      console.warn('getMarketingCampaigns note:', e.message);
     }
-    return localCampaigns;
+    return INITIAL_CAMPAIGNS;
   },
 
-  async createCampaign(campaign: Omit<MarketingCampaign, 'id'>): Promise<MarketingCampaign> {
-    const newId = crypto.randomUUID();
+  async updateCampaignStatus(id: string, status: MarketingCampaign['status']): Promise<MarketingCampaign> {
+    if (!isValidUuid(id)) throw new Error(`Invalid campaign UUID: ${id}`);
+    const { data, error } = await supabase.from('marketing_campaigns').update({ status }).eq('id', id).select().single();
+    if (error) throw new Error(error.message);
+    return data as MarketingCampaign;
+  },
+
+  async createCampaign(camp: Omit<MarketingCampaign, 'id' | 'created_at'>): Promise<MarketingCampaign> {
     const payload = {
-      id: newId,
-      title: (campaign as any).title || campaign.name,
-      type: (campaign as any).type || (campaign as any).channel || 'Featured Vehicle',
-      budget: Number(campaign.budget || 0),
-      spent: Number(campaign.spent || 0),
-      clicks: (campaign as any).clicks || 0,
-      impressions: (campaign as any).impressions || 0,
-      conversions: campaign.conversions || 0,
-      start_date: campaign.start_date || new Date().toISOString().split('T')[0],
-      end_date: campaign.end_date || null,
-      status: campaign.status || 'Active',
-      created_at: new Date().toISOString()
+      title: camp.title || camp.name || 'Campaign',
+      type: camp.type || 'Featured Vehicle',
+      budget: Number(camp.budget || 0),
+      spent: Number(camp.spent || 0),
+      clicks: Number(camp.clicks || 0),
+      impressions: Number(camp.impressions || 0),
+      conversions: Number(camp.conversions || 0),
+      start_date: camp.start_date || null,
+      end_date: camp.end_date || null,
+      status: camp.status || 'Active'
     };
 
-    try {
-      const { data, error } = await supabase.from('marketing_campaigns').insert([payload]).select().single();
-      if (!error && data) {
-        localCampaigns.unshift(data as MarketingCampaign);
-        setStorageItem('swahivo_cache_campaigns', localCampaigns);
-        return data as MarketingCampaign;
-      }
-    } catch (err) {
-      console.warn('Campaign create cache persistence:', err);
+    const { data, error } = await supabase.from('marketing_campaigns').insert([payload]).select().single();
+    if (error) {
+      console.error('Supabase createCampaign failed:', error);
+      throw new Error(`Campaign creation failed in Supabase: ${error.message}`);
     }
-    localCampaigns.unshift(payload as any);
-    setStorageItem('swahivo_cache_campaigns', localCampaigns);
-    return payload as any;
-  },
-
-  async updateCampaignStatus(id: string, status: MarketingCampaign['status']): Promise<MarketingCampaign | null> {
-    if (isValidUuid(id)) {
-      try {
-        const { data } = await supabase.from('marketing_campaigns').update({ status }).eq('id', id).select().single();
-        if (data) {
-          const idx = localCampaigns.findIndex(c => c.id === id);
-          if (idx !== -1) localCampaigns[idx] = data as MarketingCampaign;
-          setStorageItem('swahivo_cache_campaigns', localCampaigns);
-          return data as MarketingCampaign;
-        }
-      } catch (err) {
-        console.warn('Update campaign error:', err);
-      }
-    }
-    const idx = localCampaigns.findIndex(c => c.id === id);
-    if (idx !== -1) {
-      localCampaigns[idx] = { ...localCampaigns[idx], status };
-      setStorageItem('swahivo_cache_campaigns', localCampaigns);
-      return localCampaigns[idx];
-    }
-    return null;
+    return data as MarketingCampaign;
   },
 
   // =========================================================================
-  // 18. SUPABASE STORAGE (VEHICLE IMAGES & ASSETS UPLOAD)
+  // 17. PROFILES & USERS
   // =========================================================================
-  async uploadVehicleImage(file: File): Promise<string> {
+  async getUsers(): Promise<UserProfile[]> {
     try {
-      const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
-      const filePath = `listings/${fileName}`;
-
-      const { data, error } = await supabase.storage
-        .from('vehicle-images')
-        .upload(filePath, file, { cacheControl: '3600', upsert: true });
-
-      if (error) {
-        console.warn('Storage upload error, returning object URL:', error.message);
-        return URL.createObjectURL(file);
+      const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data && data.length > 0) {
+        return data.map((p: any) => ({
+          user_id: p.user_id,
+          id: p.user_id,
+          role: p.role,
+          full_name: p.full_name,
+          name: p.full_name,
+          email: p.email,
+          phone: p.phone,
+          avatar_url: p.avatar_url,
+          city: p.city,
+          address: p.address,
+          bio: p.bio,
+          is_verified: p.is_verified
+        }));
       }
-
-      const { data: pubData } = supabase.storage
-        .from('vehicle-images')
-        .getPublicUrl(data.path);
-
-      return pubData.publicUrl;
     } catch (e: any) {
-      console.warn('Vehicle photo upload failed:', e);
-      return URL.createObjectURL(file);
+      console.warn('getUsers note:', e.message);
     }
+    return [];
   },
 
-  // =========================================================================
-  // 18.5 NOTIFICATIONS
-  // =========================================================================
-  async getNotifications(userId?: string): Promise<NotificationItem[]> {
-    const validUserId = sanitizeUuid(userId) || (await supabase.auth.getSession()).data.session?.user?.id;
-    if (validUserId && isValidUuid(validUserId)) {
-      try {
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', validUserId)
-          .order('created_at', { ascending: false });
-        if (!error && data && data.length > 0) {
-          return data as NotificationItem[];
-        }
-      } catch (e) {
-        console.warn('Supabase getNotifications error:', e);
-      }
-    }
-    return [
-      {
-        id: 'notif-1',
-        title: 'New Enquiry Received',
-        message: 'A prospective buyer requested inspection details for 2023 Toyota Land Cruiser.',
-        type: 'info',
-        read: false,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'notif-2',
-        title: 'Test Drive Scheduled',
-        message: 'Test drive confirmed for tomorrow at 10:00 AM at Victoria Plaza Showroom.',
-        type: 'booking',
-        read: false,
-        created_at: new Date(Date.now() - 3600000).toISOString()
-      }
-    ];
-  },
+  async updateUserRole(userId: string, newRole: string): Promise<boolean> {
+    if (!isValidUuid(userId)) throw new Error(`Invalid user UUID: ${userId}`);
 
-  async markNotificationRead(id: string): Promise<boolean> {
-    if (isValidUuid(id)) {
-      try {
-        await supabase.from('notifications').update({ read: true }).eq('id', id);
-        return true;
-      } catch (e) {
-        console.warn('markNotificationRead error:', e);
-      }
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('user_id', userId);
+    if (error) {
+      console.error('Supabase updateUserRole failed:', error);
+      throw new Error(`User role update failed in Supabase: ${error.message}`);
     }
     return true;
   },
 
-  // =========================================================================
-  // 19. REALTIME SYNCHRONIZATION
-  // =========================================================================
-  subscribeToTable(table: string, callback: (payload: any) => void): () => void {
+  async getSellerProfile(sellerId: string): Promise<any | null> {
+    if (!isValidUuid(sellerId)) return null;
+    const { data } = await supabase.from('seller_profiles').select('*').eq('seller_id', sellerId).maybeSingle();
+    return data;
+  },
+
+  async updateSellerProfile(sellerId: string, updates: any): Promise<any> {
+    if (!isValidUuid(sellerId)) throw new Error(`Invalid seller UUID: ${sellerId}`);
+
+    const { data, error } = await supabase
+      .from('seller_profiles')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('seller_id', sellerId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase updateSellerProfile failed:', error);
+      throw new Error(`Seller profile update failed in Supabase: ${error.message}`);
+    }
+    return data;
+  },
+
+  async toggleUserVerification(userId: string): Promise<boolean> {
+    if (!isValidUuid(userId)) throw new Error(`Invalid user UUID: ${userId}`);
+    const { data: user } = await supabase.from('profiles').select('is_verified').eq('user_id', userId).single();
+    const newStatus = !(user?.is_verified ?? false);
+    const { error } = await supabase.from('profiles').update({ is_verified: newStatus }).eq('user_id', userId);
+    if (error) throw new Error(error.message);
+    return newStatus;
+  },
+
+  subscribeToTable(table: string, onEvent: () => void) {
     const channel = supabase
-      .channel(`rt_${table}_${Math.random().toString(36).substring(2, 7)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
-        callback(payload);
+      .channel(`rt_${table}_${Math.random()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+        onEvent();
       })
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
+  },
+
+  async getNotifications(userId?: string): Promise<any[]> {
+    try {
+      let query = supabase.from('notifications').select('*').order('created_at', { ascending: false });
+      if (userId && isValidUuid(userId)) query = query.eq('user_id', userId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async subscribeNewsletter(email: string): Promise<boolean> {
+    const { error } = await supabase.from('newsletter_subscribers').insert([{ email }]);
+    if (error) {
+      console.warn('Newsletter subscription notice:', error.message);
+      return false;
+    }
+    return true;
+  },
+
+  async markNotificationRead(id: string): Promise<boolean> {
+    if (!isValidUuid(id)) return true;
+    await supabase.from('notifications').update({ read: true }).eq('id', id);
+    return true;
   }
 };

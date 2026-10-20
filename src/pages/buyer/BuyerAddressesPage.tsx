@@ -6,11 +6,22 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, sanitizeUuid } from '../../integrations/supabase/client';
 
+interface BuyerAddress {
+  id: string;
+  title: string;
+  street: string;
+  district: string;
+  city: string;
+  phone: string;
+  isDefault: boolean;
+  type?: string;
+}
+
 export const BuyerAddressesPage: React.FC = () => {
   const { user } = useAuth();
   const uid = sanitizeUuid(user?.user_id || user?.id) || 'be3c05de-2678-471d-90e7-8010a6bf9010';
 
-  const [addresses, setAddresses] = useState(() => {
+  const [addresses, setAddresses] = useState<BuyerAddress[]>(() => {
     try {
       const saved = localStorage.getItem('swahivo_buyer_addresses');
       return saved ? JSON.parse(saved) : [

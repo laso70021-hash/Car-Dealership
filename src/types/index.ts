@@ -109,6 +109,7 @@ export interface Accessory {
   sku?: string | null;
   compatibility?: string[];
   images?: string[];
+  image?: string;
   status: 'active' | 'inactive' | 'out_of_stock';
   created_at?: string;
 }
@@ -127,7 +128,7 @@ export interface DealershipServiceOffering {
 
 export interface Order {
   id: string;
-  order_number: string;
+  order_number?: string;
   customer_id?: string | null;
   customer_name: string;
   phone?: string;
@@ -180,7 +181,7 @@ export interface Enquiry {
 
 export interface Booking {
   id: string;
-  booking_number: string;
+  booking_number?: string;
   booking_reference?: string;
   booking_type?: 'test_drive' | 'service';
   vehicle_id?: string | null;
@@ -210,6 +211,9 @@ export interface CustomerReview {
   user_name?: string;
   customer_city: string;
   customer_avatar?: string;
+  customer_id?: string | null;
+  vehicle_id?: string | null;
+  seller_id?: string | null;
   rating: number;
   category?: string;
   comment: string;
@@ -245,6 +249,11 @@ export interface Motorbike {
   image_url: string;
   availability: 'available' | 'sold' | 'reserved';
   location: string;
+  slug?: string;
+  fuel_type?: string;
+  engine_capacity?: string;
+  primary_image?: string;
+  created_at?: string;
 }
 
 export interface Lead {
@@ -263,13 +272,13 @@ export interface Lead {
 
 export interface FinancingApplication {
   id: string;
-  application_number: string;
+  application_number?: string;
   customer_id?: string;
   applicant_name: string;
   applicant_email?: string;
   applicant_phone?: string;
   national_id?: string;
-  phone: string;
+  phone?: string;
   email?: string;
   employment_status?: 'Employed' | 'Self-Employed' | 'Business Owner';
   monthly_income: number;
@@ -283,7 +292,7 @@ export interface FinancingApplication {
   term_months?: number;
   monthly_payment: number;
   bank_partner?: string;
-  status: 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'More Info Needed' | 'approved' | 'under_review' | 'pending' | 'rejected';
+  status?: 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'More Info Needed' | 'approved' | 'under_review' | 'pending' | 'rejected';
   notes?: string;
   created_at?: string;
 }

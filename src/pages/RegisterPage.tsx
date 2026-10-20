@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Phone, MapPin, Store, UserCheck, ArrowRight } from 'lucide-react';
+import { Mail, Lock, User, Phone, MapPin, Store, UserCheck, AlertCircle } from 'lucide-react';
 import { SwahivoLogo } from '../components/common/SwahivoLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
 
 export const RegisterPage: React.FC = () => {
-  const { signIn } = useAuth();
+  const { signUp } = useAuth();
   const navigate = useNavigate();
   const [role, setRole] = useState<UserRole>('buyer');
   const [fullName, setFullName] = useState('');
@@ -15,12 +15,33 @@ export const RegisterPage: React.FC = () => {
   const [businessName, setBusinessName] = useState('');
   const [city, setCity] = useState('Dar es Salaam');
   const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signIn(email, role);
-    if (role === 'seller') navigate('/seller/dashboard');
-    else navigate('/account/dashboard');
+    setErrorMsg(null);
+    setIsSubmitting(true);
+
+    try {
+      const res = await signUp(email, password, role, fullName, {
+        phone,
+        city,
+        businessName: role === 'seller' ? businessName : undefined
+      });
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'Registration failed. Please check details.');
+        return;
+      }
+
+      if (role === 'seller') navigate('/seller/dashboard');
+      else navigate('/account/dashboard');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An error occurred during registration');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -43,7 +64,7 @@ export const RegisterPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('buyer')}
-              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 role === 'buyer' ? 'bg-[#ef172b] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -53,7 +74,7 @@ export const RegisterPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setRole('seller')}
-              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 role === 'seller' ? 'bg-[#ef172b] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -61,6 +82,13 @@ export const RegisterPage: React.FC = () => {
               <span>Dealership / Agent</span>
             </button>
           </div>
+
+          {errorMsg && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-xs text-red-700 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-[#ef172b] flex-shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{errorMsg}</div>
+            </div>
+          )}
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
@@ -134,6 +162,7 @@ export const RegisterPage: React.FC = () => {
               <input
                 type="password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -143,9 +172,10 @@ export const RegisterPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg-[#ef172b] hover:bg-[#d01122] text-white text-xs font-bold rounded-xl shadow-md shadow-red-500/20 transition-all hover:scale-[1.01]"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-[#ef172b] hover:bg-[#d01122] text-white text-xs font-bold rounded-xl shadow-md shadow-red-500/20 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-60"
             >
-              Complete Registration
+              {isSubmitting ? 'Creating Account in Supabase...' : 'Complete Registration'}
             </button>
           </form>
 

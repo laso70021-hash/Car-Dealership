@@ -82,7 +82,7 @@ export const AdminOrdersEnquiriesPage: React.FC<Props> = ({ defaultTab = 'orders
   };
 
   const filteredOrders = orders.filter((o) =>
-    o.order_number.toLowerCase().includes(search.toLowerCase()) ||
+    (o.order_number || '').toLowerCase().includes(search.toLowerCase()) ||
     o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
     (o.product_name || o.items?.[0]?.name || '').toLowerCase().includes(search.toLowerCase())
   );

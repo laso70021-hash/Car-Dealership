@@ -29,9 +29,14 @@ export const AdminSettingsPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) return;
-    await DealershipService.updateSettings(settings);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+    try {
+      await DealershipService.updateSettings(settings);
+      setSaveSuccess(true);
+      await loadSettings();
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err: any) {
+      alert(`Failed to save settings to Supabase: ${err.message}`);
+    }
   };
 
   if (!settings) return null;

@@ -9,8 +9,8 @@ import { Vehicle } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const SellerVehiclesPage: React.FC = () => {
-  const { user } = useAuth();
-  const sellerId = user?.user_id || user?.id || '8916c8d8-3037-4e54-9ea5-d025cd77e042';
+  const { user, isAuthenticated } = useAuth();
+  const sellerId = user?.user_id;
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,16 +24,26 @@ export const SellerVehiclesPage: React.FC = () => {
 
   const loadVehicles = async () => {
     setLoading(true);
-    const data = await DealershipService.getVehicles({ sellerId });
-    setVehicles(data);
-    setLoading(false);
+    try {
+      // Query vehicles belonging to this authenticated seller, or all listings if seller has none yet
+      const data = await DealershipService.getVehicles(sellerId ? { sellerId } : undefined);
+      setVehicles(data);
+    } catch (err) {
+      console.error('Error loading seller vehicles from Supabase:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this listing?')) {
-      await DealershipService.deleteVehicle(id);
-      setVehicles(vehicles.filter((v) => v.id !== id));
-      if (selectedVehicle?.id === id) setSelectedVehicle(null);
+    if (confirm('Are you sure you want to permanently delete this listing from Supabase?')) {
+      try {
+        await DealershipService.deleteVehicle(id);
+        await loadVehicles();
+        if (selectedVehicle?.id === id) setSelectedVehicle(null);
+      } catch (err: any) {
+        alert(`Failed to delete vehicle from Supabase: ${err.message}`);
+      }
     }
   };
 

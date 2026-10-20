@@ -18,16 +18,20 @@ export const AdminUsersPage: React.FC = () => {
   };
 
   const handleRoleChange = async (userId: string, newRole: UserProfile['role']) => {
-    const updated = await DealershipService.updateUserRole(userId, newRole);
-    if (updated) {
-      setUsers(users.map((u) => (u.user_id === userId ? updated : u)));
+    try {
+      await DealershipService.updateUserRole(userId, newRole);
+      setUsers(users.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u)));
+    } catch (err: any) {
+      alert(`Failed to update role: ${err.message}`);
     }
   };
 
   const handleToggleVerification = async (userId: string) => {
-    const updated = await DealershipService.toggleUserVerification(userId);
-    if (updated) {
-      setUsers(users.map((u) => (u.user_id === userId ? updated : u)));
+    try {
+      const newStatus = await DealershipService.toggleUserVerification(userId);
+      setUsers(users.map((u) => (u.user_id === userId ? { ...u, is_verified: newStatus } : u)));
+    } catch (err: any) {
+      alert(`Failed to toggle verification: ${err.message}`);
     }
   };
 

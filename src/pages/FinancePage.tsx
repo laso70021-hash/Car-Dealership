@@ -50,7 +50,7 @@ export const FinancePage: React.FC = () => {
         notes: `Down Payment: ${downPaymentPct}%, Term: ${loanTermMonths} months, Rate: ${interestRatePct}%`
       });
 
-      setApplicationRef(res.application_number);
+      setApplicationRef(res.application_number || res.id);
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 5000);
     } catch (err) {

@@ -51,53 +51,70 @@ export const AdminOverviewPage: React.FC = () => {
   const [newYear, setNewYear] = useState(2023);
   const [newCity, setNewCity] = useState('Dar es Salaam');
 
+  const loadData = async () => {
+    const [vData, oData, eData] = await Promise.all([
+      DealershipService.getVehicles(),
+      DealershipService.getOrders(),
+      DealershipService.getEnquiries()
+    ]);
+    setVehicles(vData);
+    setOrders(oData);
+    setEnquiries(eData);
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      const [vData, oData, eData] = await Promise.all([
-        DealershipService.getVehicles(),
-        DealershipService.getOrders(),
-        DealershipService.getEnquiries()
-      ]);
-      setVehicles(vData);
-      setOrders(oData);
-      setEnquiries(eData);
-    };
     loadData();
   }, []);
 
+  const [addError, setAddError] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = await DealershipService.createVehicle({
-      title: newTitle,
-      slug: newTitle.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
-      brand: newBrand,
-      model: newModel,
-      vehicle_type: 'SUV',
-      condition: 'Used',
-      year: Number(newYear),
-      mileage: 15000,
-      fuel_type: 'Petrol',
-      transmission: 'Automatic',
-      price: Number(newPrice),
-      currency: 'TZS',
-      location: newCity,
-      city: newCity,
-      availability: 'available',
-      verification_status: 'verified',
-      featured_status: true,
-      publication_status: 'approved',
-      primary_image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800&q=80'
-    });
-    setVehicles([created, ...vehicles]);
-    setIsAddVehicleOpen(false);
-    setNewTitle('');
-    setNewModel('');
+    setAddError(null);
+    setIsAdding(true);
+    try {
+      await DealershipService.createVehicle({
+        title: newTitle,
+        slug: `${newBrand.toLowerCase()}-${newModel.toLowerCase()}-${Date.now().toString().slice(-5)}`.replace(/\s+/g, '-'),
+        brand: newBrand,
+        model: newModel,
+        vehicle_type: 'SUV',
+        condition: 'Used',
+        year: Number(newYear),
+        mileage: 15000,
+        fuel_type: 'Petrol',
+        transmission: 'Automatic',
+        engine_capacity: '2.8L',
+        price: Number(newPrice),
+        currency: 'TZS',
+        location: newCity,
+        city: newCity,
+        availability: 'available',
+        verification_status: 'verified',
+        featured_status: true,
+        publication_status: 'approved',
+        primary_image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800&q=80'
+      });
+      await loadData();
+      setIsAddVehicleOpen(false);
+      setNewTitle('');
+      setNewModel('');
+    } catch (err: any) {
+      setAddError(err.message || 'Failed to create vehicle in Supabase');
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   const handleDeleteVehicle = async (id: string) => {
-    if (confirm('Are you sure you want to delete this vehicle listing?')) {
-      await DealershipService.deleteVehicle(id);
-      setVehicles(vehicles.filter(v => v.id !== id));
+    if (confirm('Are you sure you want to permanently delete this vehicle listing from Supabase?')) {
+      try {
+        await DealershipService.deleteVehicle(id);
+        await loadData();
+      } catch (err: any) {
+        alert(`Failed to delete vehicle: ${err.message}`);
+      }
     }
   };
 
@@ -481,6 +498,12 @@ export const AdminOverviewPage: React.FC = () => {
               </button>
             </div>
 
+            {addError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-[#ef172b] flex-shrink-0" />
+                <span>{addError}</span>
+              </div>
+            )}
             <form onSubmit={handleAddVehicle} className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Vehicle Title</label>
